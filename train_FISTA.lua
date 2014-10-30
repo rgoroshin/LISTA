@@ -17,7 +17,7 @@ bsz = 16
 ds_small = DataSource({dataset = data:narrow(1,1,1000), batchSize = bsz})
 ds_train = DataSource({dataset = data, batchSize = bsz})
 
-ds = ds_small
+ds = ds_train
 epochs = 100 
 inplane = 3 
 outplane = 16
