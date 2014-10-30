@@ -17,7 +17,7 @@ bsz = 16
 ds_small = DataSource({dataset = data:narrow(1,1,1000), batchSize = bsz})
 ds_train = DataSource({dataset = data, batchSize = bsz})
 
-ds = ds_train
+ds = ds_small
 epochs = 100 
 inplane = 3 
 outplane = 16
@@ -25,12 +25,12 @@ k = 5
 stride = 1
 padding = (k-1)/2
 --1/(code learning rate)  
-L = 500
+L = 30
 --inference % threshold 
-min_change = 0.5
+min_change = 0.1
 --dictionary learning rate 
 learn_rate = 0.5
-l1w = 0.01
+l1w = 0.2
 --=====initialize componenets=====  
 --Decoder 
 decoder = nn.Sequential() 
