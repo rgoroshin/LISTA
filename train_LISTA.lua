@@ -13,17 +13,6 @@ if gpu_id == nil then
 end 
 torch.setdefaulttensortype('torch.FloatTensor')
 ---------------------
-require 'image'
-require 'xlua'
-require 'mattorch'
-require 'optim'
-require 'data' 
-dofile('./Modules/init.lua') 
-dofile('util.lua') 
-dofile('pbar.lua') 
-dofile('lushio.lua') 
-dofile('networks.lua')
-
 save_path = './Results/Experiments/' 
 exp_name = 'LISTA_Decoder/'
 epochs = 300 

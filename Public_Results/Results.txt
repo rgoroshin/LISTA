@@ -1,0 +1,5 @@
+10/31/2014 (Happy Halloween!) 
+Here is the first result of convolutional FISTA dictionary learning. 
+The average reconstruction error is 35% of the input energy of the images. 
+The average sparsity is 87.7% (i.e. 12.3% of the units are active). 
+Loss = 0.023277 after 40 epochs. 

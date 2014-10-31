@@ -15,22 +15,22 @@ end
 
 bsz = 16
 ds_small = DataSource({dataset = data:narrow(1,1,1000), batchSize = bsz})
-ds_train = DataSource({dataset = data, batchSize = bsz})
+ds_large = DataSource({dataset = data, batchSize = bsz})
 
-ds = ds_train
+ds = ds_large
 epochs = 100 
 inplane = 3 
-outplane = 16
-k = 5
+outplane = 32
+k = 9
 stride = 1
 padding = (k-1)/2
 --1/(code learning rate)  
-L = 30
---inference % threshold 
-min_change = 0.1
+L = 100
+--inference iters 
+niter = 10
 --dictionary learning rate 
 learn_rate = 0.5
-l1w = 0.2
+l1w = 0.50
 --=====initialize componenets=====  
 --Decoder 
 decoder = nn.Sequential() 
@@ -80,8 +80,9 @@ for iter = 1,epochs do
       Zprev:fill(0)
       Y:copy(Zprev)
       
-      while Ydiff > min_change do 
-          --ISTA
+      --while Ydiff > min_change do 
+     for i = 1,niter do 
+        --ISTA
           Xerr = decoder:forward(Y):add(-1,X)  
           dZ = encoder:forward(Xerr)  
           Z:copy(Y:add(-1/L,dZ))  
@@ -92,11 +93,11 @@ for iter = 1,epochs do
           Ynext:copy(Z)
           Ynext:add((1-t)/tnext,Zprev:add(-1,Z))
           Ydiff = Y:add(-1,Ynext):norm(2)/Ynext:norm(2) 
-          --copies for next iter 
+         --copies for next iter 
           Y:copy(Ynext)
           Zprev:copy(Z)
           t = tnext
-      end
+     end
       
       --update dictionary
       Xr = decoder:forward(Y)
