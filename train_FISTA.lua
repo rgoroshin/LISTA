@@ -124,7 +124,7 @@ for iter = 1,epochs do
   print(tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss) 
   Irec = image.toDisplayTensor({input=Xr,nrow=8,padding=1}) 
   image.save(save_dir..'Irec.png', Irec)
-  Idec = image.toDisplayTensor({input=flip(ConvDec.weight:float()),nrow=8,padding=1}) 
+  Idec = image.toDisplayTensor({input=flip(ConvDec.weight:float()),nrow=8,padding=1,zoom=3}) 
   image.save(save_dir..'dec.png', Idec)
 
 end 
