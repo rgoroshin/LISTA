@@ -1,23 +1,22 @@
 dofile('init.lua') 
-save_dir = './Results/Experiments/ConvSC/'
+cutorch.setDevice(1) 
+exp_name = 'FISTA/'
+save_dir = './Results/Experiments/'..exp_name
 os.execute('mkdir -p '..save_dir) 
 exp_conf = paths.thisfile() 
 os.execute('cp '..exp_conf..' '..save_dir) 
 
-cutorch.setDevice(1) 
-torch.setdefaulttensortype('torch.FloatTensor')
-
 --load the data
-if data == nil then 
-    data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
-    data = data.datacn:resize(50000,3,32,32) 
+if train_data == nil then 
+    train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
+    data = train_data.datacn:resize(50000,3,32,32) 
 end
 
 bsz = 16
 ds_small = DataSource({dataset = data:narrow(1,1,1000), batchSize = bsz})
 ds_large = DataSource({dataset = data, batchSize = bsz})
 
-ds = ds_large
+ds = ds_small
 epochs = 100 
 inplane = 3 
 outplane = 32
@@ -30,6 +29,7 @@ L = 100
 niter = 10
 --dictionary learning rate 
 learn_rate = 0.5
+--L1 weight 
 l1w = 0.50
 --=====initialize componenets=====  
 --Decoder 
@@ -53,7 +53,6 @@ threshold = nn.Threshold(0,0):cuda()
 Zprev = torch.zeros(bsz,outplane,32,32):cuda()
 --Reconstruction Criterion 
 criterion = nn.MSECriterion():cuda() 
-
 --initialize FISTA storage 
 Zprev = torch.zeros(bsz,outplane,32,32):cuda()
 Z = Zprev:clone() 
@@ -124,9 +123,9 @@ for iter = 1,epochs do
   print(tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss) 
   Irec = image.toDisplayTensor({input=Xr,nrow=8,padding=1}) 
   image.save(save_dir..'Irec.png', Irec)
-  Idec = image.toDisplayTensor({input=flip(ConvDec.weight:float()),nrow=8,padding=1,zoom=3}) 
+  Idec = image.toDisplayTensor({input=flip(ConvDec.weight:float()),nrow=8,padding=1}) 
   image.save(save_dir..'dec.png', Idec)
 
 end 
 
-torch.save(save_dir..'net', decoder)  
+torch.save(save_dir..'decoder.t7', decoder)  

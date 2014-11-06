@@ -1,3 +1,4 @@
+torch.setdefaulttensortype('torch.FloatTensor')
 require 'cunn'
 require 'FFTconv'
 require 'image'

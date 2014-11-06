@@ -4,8 +4,7 @@ construct_LISTA = function(encoder, nloops, alpha, L)
 --[n] = number of LISTA loops 
 --WARNING: Assumes CudaTensor  
     encoder = encoder:clone() 
-    local L = L or 100 
-    local alpha = alpha or -0.5 
+    local alpha = alpha or 0.5 
     --initialize S 
     local S = nn.Sequential() 
 
@@ -22,6 +21,7 @@ construct_LISTA = function(encoder, nloops, alpha, L)
         encoder:cuda()
 
     elseif string.find(torch.typename(encoder),'nn.SpatialConvolution') then 
+        print('Initializing convolutional LISTA...') 
         -- flip because conv2 flips whereas nn.SpatialConvolution will not 
         local We = flip(encoder.weight) 
         --dimensions (assume square, odd-sized kernels and stride = 1) 
@@ -38,6 +38,23 @@ construct_LISTA = function(encoder, nloops, alpha, L)
             Sw[i] = torch.conv2(We:select(2,i),flip(We),'F') 
         end
         
+        --find L using power method
+        if L == nil then  
+            local k2 = 2*k-1
+            local input = norm_filters(torch.rand(outplane,outplane,k2,k2)) 
+            local input_prev = input:clone() 
+            local output = input:clone():zero()
+            for i = 1,100 do 
+                progress(i,100)
+                for i = 1,outplane do
+                    output[i] = torch.conv2(input:select(2,i),Sw,'F'):narrow(2,(k2-1)/2,k2):narrow(3,(k2-1)/2,k2) 
+                end
+                input_prev:copy(input) 
+                input:copy(norm_filters(output))
+            end
+            L = output:norm() 
+        end
+
         Sw:div(L) 
         
         local I = torch.zeros(outplane,outplane,2*k-1,2*k-1) 

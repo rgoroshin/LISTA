@@ -35,6 +35,7 @@ network_plots = function(net, ds, save_path, image_weights, iter)
         end 
 end
 
+
 --measure the error on the test set 
 test_error = function(net, ds_test) 
 

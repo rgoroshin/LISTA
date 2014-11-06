@@ -4,10 +4,12 @@ local L1Penalty, parent = torch.class('nn.L1Penalty','nn.Module')
 --[gradOutput] to the gradient of the L1 loss. The [input] is copied to 
 --the [output]. 
 
-function L1Penalty:__init(l1weight, sizeAverage)
+function L1Penalty:__init(provideOutput,weight,sizeAverage)
     parent.__init(self)
-    self.l1weight = l1weight 
+    self.provideOutput = provideOutput or false
+    self.l1weight = weight or 0.5  
     self.sizeAverage = sizeAverage or false  
+    self.L1Cost = torch.Tensor(1) 
 end
 
 function L1Penalty:updateOutput(input)
@@ -16,9 +18,11 @@ function L1Penalty:updateOutput(input)
       m = m/input:nElement()
     end
     local loss = m*input:norm(1) 
-    self.loss = loss  
+    self.L1Cost:fill(loss) 
     self.output = input 
-    return self.output 
+    if self.provideOutput == true then 
+        return self.output 
+    end
 end
 
 function L1Penalty:updateGradInput(input, gradOutput)
