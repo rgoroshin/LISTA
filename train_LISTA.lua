@@ -31,7 +31,7 @@ ds_test = DataSource({dataset = test_data, batchSize = bsz})
 decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
 
 --settings
-ds=ds_small
+ds=ds_train
 epochs = 5
 inplane = 3 
 outplane = decoder:get(2).nInputPlane 

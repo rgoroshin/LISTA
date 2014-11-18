@@ -9,47 +9,54 @@ os.execute('cp '..exp_conf..' '..save_dir)
 --load the data
 if train_data == nil then 
     train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
-    data = train_data.datacn 
+    data = train_data.datacn:resize(50000,3,32,32) 
 end
 
 bsz = 16
-ds_small = DataSource({dataset = data:narrow(1,1,10000), batchSize = bsz})
+ds_small = DataSource({dataset = data:narrow(1,1,1000), batchSize = bsz})
 ds_large = DataSource({dataset = data, batchSize = bsz})
 
-ds = ds_large
---ds = ds_small
+ds = ds_small
 epochs = 100 
-insz = 3*32*32 
-outsz = 256
+inplane = 3 
+outplane = 32
+k = 9
+stride = 1
+padding = (k-1)/2
 --1/(code learning rate)  
-L = 50
+L = 100
 --inference iters 
-niter = 20
+niter = 10
 --dictionary learning rate 
-learn_rate = 1e-4
+learn_rate = 0.5
 --L1 weight 
-l1w = 0.3
+l1w = 0.50
 --=====initialize componenets=====  
 --Decoder 
-decoder = nn.NormLinear(outsz,insz):cuda()
---Transpose Decoder 
-encoder = nn.NormLinear(insz,outsz):cuda()  
-encoder.weight:copy(decoder.weight:t())
-decoder.bias:fill(0) 
-encoder.bias:fill(0)
+decoder = nn.Sequential() 
+ConvDec = nn.NormSpatialConvolutionFFT(outplane, inplane, k, k, stride, stride) 
+ConvDec.bias:fill(0) 
+decoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
+decoder:add(ConvDec) 
+decoder:cuda() 
+--Encoder
+encoder = nn.Sequential() 
+ConvEnc = nn.SpatialConvolutionFFT(inplane, outplane, k, k, stride, stride) 
+ConvEnc.weight:copy(flip(ConvDec.weight)) 
+ConvEnc.bias:fill(0)
+encoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
+encoder:add(ConvEnc) 
+encoder:cuda() 
 --Thresholding-operator 
 threshold = nn.Threshold(0,0):cuda()  
 --Initial code 
-Zprev = torch.zeros(bsz,outsz):cuda()
+Zprev = torch.zeros(bsz,outplane,32,32):cuda()
 --Reconstruction Criterion 
 criterion = nn.MSECriterion():cuda() 
-criterion.sizeAverage = false 
 --initialize FISTA storage 
 Z = Zprev:clone() 
 Y = Zprev:clone() 
 Ynext = Zprev:clone() 
-Xerr = torch.CudaTensor(bsz,insz) 
-dZ = torch.CudaTensor(bsz,outsz) 
 
 for iter = 1,epochs do 
 
@@ -60,21 +67,22 @@ for iter = 1,epochs do
   
  for i = 1,ds:size()+1 do 
   
-     progress(i,ds:size()) 
+      progress(i,ds:size()) 
 
-     --get a sample 
-     X = ds:next() 
-     
-     --FISTA inference (iterate until change in Y is <%min_change)  
-     local t = 1
-     Zprev:fill(0)
-     Y:fill(0)
-     
+      --get a sample 
+      X = ds:next() 
+      
+      --FISTA inference (iterate until change in Y is <%min_change)  
+      local t = 1
+      Zprev:fill(0)
+      Y:fill(0)
+      
+      --while Ydiff > min_change do 
      for i = 1,niter do 
         --ISTA
-          Xerr:copy(decoder:forward(Y):add(-1,X)) 
-          dZ:copy(encoder:forward(Xerr):mul(2))   
-          Z:copy(Y:add(-1/L,dZ))
+          Xerr = decoder:forward(Y):add(-1,X)  
+          dZ = encoder:forward(Xerr)  
+          Z:copy(Y:add(-1/L,dZ))  
           Z:add(-l1w/L) 
           Z:copy(threshold(Z))
           --FISTA 
@@ -85,10 +93,13 @@ for iter = 1,epochs do
           Y:copy(Ynext)
           Zprev:copy(Z)
           t = tnext
+        
+--      Xr = decoder:forward(Y)
+--      rec_error = criterion:forward(Xr,X) 
+--      sample_loss = rec_error + l1w*Y:norm(1)/(bsz*outplane*32*32)  
+--      print(sample_loss) 
+--      sys.sleep(1) 
      
-      --  sample_loss = Xerr:clone():pow(2):sum() + l1w*Y:norm(1) 
-      --  print(sample_loss) 
-      --  sys.sleep(0.2) 
      end
       
       --update dictionary
@@ -98,19 +109,13 @@ for iter = 1,epochs do
       decoder:zeroGradParameters() 
       decoder:backward(Y,rec_grad)
       decoder:updateParameters(learn_rate) 
-      
-      --sample_loss = Xr:add(-1,X):pow(2):sum() + l1w*Y:norm(1) 
-      --print('****')
-      --print(sample_loss)
-      
-      encoder.weight:copy(decoder.weight:t())
-      decoder.bias:fill(0) 
-      encoder.bias:fill(0)
+      ConvDec.bias:fill(0) 
+      --copy to encoder  
+      ConvEnc.weight:copy(flip(ConvDec.weight))
       --track loss 
-      
-      sample_loss = Xerr:pow(2):sum() + l1w*Y:norm(1) 
-      sample_rec_error = Xerr:sum(2):cdiv(X:pow(2):sum(2)):mean()
+      sample_rec_error = Xr:clone():add(-1,X):pow(2):sum(3):sum(4):cdiv(X:pow(2):sum(3):sum(4)):sqrt():mean()
       sample_sparsity = 1-(Y:float():gt(0):sum()/Y:nElement())
+      sample_loss = rec_error + l1w*Y:norm(1)/(bsz*outplane*32*32)  
       epoch_rec_error = epoch_rec_error + sample_rec_error
       epoch_sparsity = epoch_sparsity + sample_sparsity 
       epoch_loss = epoch_loss + sample_loss 
@@ -120,9 +125,9 @@ for iter = 1,epochs do
   average_loss = epoch_loss/ds:size()  
   average_sparsity = epoch_sparsity/ds:size() 
   print(tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss) 
-  Irec = image.toDisplayTensor({input=Xr:float():resize(bsz,3,32,32),nrow=8,padding=1}) 
+  Irec = image.toDisplayTensor({input=Xr,nrow=8,padding=1}) 
   image.save(save_dir..'Irec.png', Irec)
-  Idec = image.toDisplayTensor({input=encoder.weight:float():resize(outsz,3,32,32),nrow=8,padding=1}) 
+  Idec = image.toDisplayTensor({input=flip(ConvDec.weight:float()),nrow=8,padding=1}) 
   image.save(save_dir..'dec.png', Idec)
 
 end 
