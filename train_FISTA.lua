@@ -26,9 +26,9 @@ L = 50
 --inference iters 
 niter = 20
 --dictionary learning rate 
-learn_rate = 1e-4
+learn_rate = 5e-5
 --L1 weight 
-l1w = 0.3
+l1w = 1.5
 --=====initialize componenets=====  
 --Decoder 
 decoder = nn.NormLinear(outsz,insz):cuda()
@@ -122,7 +122,7 @@ for iter = 1,epochs do
   print(tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss) 
   Irec = image.toDisplayTensor({input=Xr:float():resize(bsz,3,32,32),nrow=8,padding=1}) 
   image.save(save_dir..'Irec.png', Irec)
-  Idec = image.toDisplayTensor({input=encoder.weight:float():resize(outsz,3,32,32),nrow=8,padding=1}) 
+  Idec = image.toDisplayTensor({input=encoder.weight:float():resize(outsz,3,32,32),nrow=16,padding=1}) 
   image.save(save_dir..'dec.png', Idec)
 
 end 
