@@ -187,14 +187,14 @@ print('Test 2')
 --errors because of S-operator 
 
 --load the data
-if data == nil then 
-    data = torch.load('./Data/CIFAR_CN_train.t7')
-    data = data:resize(50000,3,32,32) 
+if data_cifar == nil then 
+    data_cifar = torch.load('./Data/CIFAR_CN_train.t7')
+    data_cifar = data_cifar:resize(50000,3,32,32) 
 end
 
 bsz = 16
-ds_train = DataSource({dataset = data, batchSize = bsz})
-ds_small = DataSource({dataset = data:narrow(1,1,800), batchSize = bsz})
+ds_train = DataSource({dataset = data_cifar, batchSize = bsz})
+ds_small = DataSource({dataset = data_cifar:narrow(1,1,800), batchSize = bsz})
 
 ds = ds_train
 inplane = 3 
@@ -262,6 +262,7 @@ net:cuda()
 Xr2 = net:forward(X)
 rec_error2 = criterion:forward(Xr2,X) 
 Z2 = LISTA.output:float() 
+-- TODO cost_table is nil
 sample_loss2 = 0.5*rec_error2 + net.cost_table.L1[1] 
 print(tostring(nloops)..'-loop-LISTA Loss '..tostring(sample_loss2))
 
