@@ -93,13 +93,6 @@ for iter = 1,epochs do
           Y:copy(Ynext)
           Zprev:copy(Z)
           t = tnext
-        
---      Xr = decoder:forward(Y)
---      rec_error = criterion:forward(Xr,X) 
---      sample_loss = rec_error + l1w*Y:norm(1)/(bsz*outplane*32*32)  
---      print(sample_loss) 
---      sys.sleep(1) 
-     
      end
       
       --update dictionary

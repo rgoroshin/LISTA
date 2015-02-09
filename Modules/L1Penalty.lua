@@ -1,10 +1,10 @@
-local L1Penalty, parent = torch.class('nn.L1Penalty','nn.Module')
+local ModuleL1Penalty, parent = torch.class('nn.ModuleL1Penalty','nn.Module')
 
 --This module acts as an L1 latent state regularizer, adding the 
 --[gradOutput] to the gradient of the L1 loss. The [input] is copied to 
 --the [output]. 
 
-function L1Penalty:__init(provideOutput,weight,sizeAverage)
+function ModuleL1Penalty:__init(provideOutput,weight,sizeAverage)
     parent.__init(self)
     self.provideOutput = provideOutput or false
     self.l1weight = weight or 0.5  
@@ -12,7 +12,7 @@ function L1Penalty:__init(provideOutput,weight,sizeAverage)
     self.L1Cost = torch.Tensor(1) 
 end
 
-function L1Penalty:updateOutput(input)
+function ModuleL1Penalty:updateOutput(input)
     local m = self.l1weight 
     if self.sizeAverage == true then 
       m = m/input:nElement()
@@ -25,7 +25,7 @@ function L1Penalty:updateOutput(input)
     end
 end
 
-function L1Penalty:updateGradInput(input, gradOutput)
+function ModuleL1Penalty:updateGradInput(input, gradOutput)
     local m = self.l1weight 
     if self.sizeAverage == true then 
       m = m/input:nElement() 

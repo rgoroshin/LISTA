@@ -1,6 +1,5 @@
 torch.setdefaulttensortype('torch.FloatTensor')
 require 'cunn'
-require 'FFTconv'
 require 'image'
 require 'xlua'
 require 'optim'

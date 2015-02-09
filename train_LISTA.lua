@@ -1,6 +1,6 @@
 dofile('init.lua') 
-cutorch.setDevice(1) 
-exp_name = 'LISTA_LASSO/'
+cutorch.setDevice(3) 
+exp_name = 'Model1/'
 save_dir = './Results/Experiments/'..exp_name
 os.execute('mkdir -p '..save_dir) 
 exp_conf = paths.thisfile() 
@@ -27,16 +27,23 @@ ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
 ds_train = DataSource({dataset = train_data, batchSize = bsz})
 ds_test = DataSource({dataset = test_data, batchSize = bsz})
 
---decoder 
-decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
+--decoder/encoder  
+Wd = torch.load('./Results/Trained_Networks/FISTA_Wd_32x3x9x9.t7') 
+decoder = nn.NormSpatialConvolutionMM(outplane,inplane,k,k,1,1,padding)
+encoder = nn.SpatialConvolutionMM(inplane,outplane,k,k,1,1,padding) 
+decoder.weight:resize(outplane,inplane,k,k):copy(Wd)
+encoder.weight:resize(inplane,outplane,k,k):copy(flip(Wd)):resize(inplane,outplane*k*k) 
+decoder.weight:resize(outplane,inplane*k*k)
+encoder.bias:zero()
+decoder.bias:zero()
+decoder:cuda() 
 
 --settings
 ds=ds_train
 epochs = 5
 inplane = 3 
-outplane = decoder:get(2).nInputPlane 
-k = decoder:get(2).kW
-stride = 1
+outplane = decoder.nInputPlane 
+k = decoder.kW
 padding = (k-1)/2
 --LISTA loops 
 learn_rate = 1e-7
@@ -50,23 +57,17 @@ for _,nloops in ipairs({0,1,3}) do
     print('number of loops: '..nloops) 
     --LISTA decoder
     --
-    --            (L1) 
-    --              |
-    -- input-->LISTA-->NormLinear-->output  
-    
-    --encoder
-    encoder = nn.SpatialConvolutionFFT(inplane, outplane, k, k, stride, stride) 
-    encoder.weight:copy(flip(decoder:get(2).weight)) 
-    encoder.bias:fill(0)
+    --              
+    -- input-->LISTA-->(L1)-->NormLinear-->output  
     
     --full network 
     net = nn.Sequential()
     net:add(construct_LISTA(encoder,nloops,l1w,600)) 
-    net:add(nn.L1Penalty(true,l1w,false)) 
+    net:add(nn.ModuleL1Penalty(true,l1w,false)) 
     --net:add(nn.Identity())
     net:add(decoder) 
     net:cuda()
-    
+
     --reconstruction criterion 
     criterion = nn.MSECriterion():cuda() 
     criterion.sizeAverage = false 
@@ -91,8 +92,8 @@ for _,nloops in ipairs({0,1,3}) do
            rec_grad = criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
            net:backward(X,rec_grad)
            --fixed decoder 
-           net:get(3):get(2).gradWeight:fill(0) 
-           net:get(3):get(2).gradBias:fill(0) 
+           net:get(3).gradWeight:fill(0) 
+           net:get(3).gradBias:fill(0) 
            net:updateParameters(learn_rate) 
           
           --track loss 
@@ -111,8 +112,10 @@ for _,nloops in ipairs({0,1,3}) do
           print(tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss) 
           Irec = image.toDisplayTensor({input=Xr,nrow=8,padding=1}) 
           image.save(save_dir..'Irec.png', Irec)
-          Ienc = image.toDisplayTensor({input=encoder.weight:float(),nrow=8,padding=1}) 
+          Ienc = image.toDisplayTensor({input=encoder.weight:clone():resize(outplane,inplane,k,k),nrow=8,padding=1}) 
           image.save(save_dir..'enc.png', Ienc)
+          Idec = image.toDisplayTensor({input=flip(decoder.weight:clone():resize(inplane,outplane,k,k)),nrow=8,padding=1}) 
+          image.save(save_dir..'dec.png', Idec)
         
     
     end 

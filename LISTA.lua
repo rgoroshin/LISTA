@@ -23,15 +23,12 @@ construct_LISTA = function(encoder, nloops, alpha, L)
     elseif string.find(torch.typename(encoder),'nn.SpatialConvolution') then 
         print('Initializing convolutional LISTA...') 
         -- flip because conv2 flips whereas nn.SpatialConvolution will not 
-        local We = flip(encoder.weight) 
+        local We = flip(encoder.weight:resize(encoder.nOutputPlane,encoder.nInputPlane,encoder.kH,encoder.kW)) 
         --dimensions (assume square, odd-sized kernels and stride = 1) 
         local inplane = We:size(1) 
         local outplane = We:size(2)
         local k = We:size(3)
         local padding = (k-1)/2
-        local pad = nn.SpatialPadding(padding,padding,padding,padding,3,4) 
-        local pad2 = nn.SpatialPadding(2*padding,2*padding,2*padding,2*padding,3,4) 
-         
         local Sw = torch.Tensor(outplane,outplane,2*k-1,2*k-1) 
         
         for i = 1,outplane do
@@ -64,16 +61,14 @@ construct_LISTA = function(encoder, nloops, alpha, L)
         end
 
         Sw = I - Sw
-        S:add(pad2:clone()) 
-        S:add(nn.SpatialConvolutionFFT(outplane,outplane,2*k-1,2*k-1))
-        S:get(2).weight:copy(Sw) 
-        S:get(2).bias:fill(0)
+        local S = nn.SpatialConvolutionMM(outplane,outplane,2*k-1,2*k-1,1,1,2*padding)
+        S.weight:copy(Sw:resize(Sw:size(1),Sw:size(2)*Sw:size(3)*Sw:size(4))) 
+        S.bias:fill(0)
         S:cuda() 
         
         encoder.weight:div(L) 
         encoder.bias:fill(-alpha/L)
         local encoder_same = nn.Sequential() 
-        encoder_same:add(pad:clone()) 
         encoder_same:add(encoder) 
         encoder = encoder_same:cuda() 
         

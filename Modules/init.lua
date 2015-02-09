@@ -1,12 +1,15 @@
 if nn.ReshapeTable == nil then 
     dofile('./Modules/ReshapeTable.lua') 
 end 
-if nn.L1Penalty == nil then 
-    dofile('./Modules/L1Penalty.lua') 
+if nn.ModuleL1Penalty == nil then 
+    dofile('./Modules/ModuleL1Penalty.lua') 
 end
 if nn.NormLinear == nil then 
     dofile('./Modules/NormLinear.lua') 
 end 
-if nn.NormSpatialConvolutionFFT == nil then 
-    dofile('./Modules/NormSpatialConvolutionFFT.lua') 
+--if nn.NormSpatialConvolutionFFT == nil then 
+--    dofile('./Modules/NormSpatialConvolutionFFT.lua') 
+--end 
+if nn.NormSpatialConvolutionMM == nil then 
+    dofile('./Modules/NormSpatialConvolutionMM.lua') 
 end 
