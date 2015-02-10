@@ -1,34 +1,23 @@
 dofile('init.lua') 
-cutorch.setDevice(1)
+cutorch.setDevice(2)
 
 decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
 
-We = decoder:get(2).weight:float()
-inplane = We:size(1) 
-outplane = We:size(2)
-k = We:size(3) 
-Sw = torch.Tensor(outplane,outplane,2*k-1,2*k-1) 
-for i = 1,outplane do
-    Sw[i] = torch.conv2(We:select(2,i),flip(We),'F') 
+--load the data 
+if train_data == nil then 
+    train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
+    train_data = train_data.datacn:resize(50000,3,32,32) 
+end
+if test_data == nil then 
+    test_data = torch.load('./Data/CIFAR/CIFAR_CN_test.t7')
+    test_data = test_data.datacn:resize(10000,3,32,32) 
 end
 
---power method
-k2 = 2*k-1
-input = norm_filters(torch.rand(32,32,17,17)) 
-input_prev = input:clone() 
-output = input:clone():zero()
---Sw = flip(Sw) 
-n = 100
+--data sources 
+bsz = 16 
+ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
+ds_train = DataSource({dataset = train_data, batchSize = bsz})
+ds_test = DataSource({dataset = test_data, batchSize = bsz})
 
-for i = 1,n do 
-    progress(i,n)
-    for i = 1,outplane do
-        output[i] = torch.conv2(input:select(2,i),Sw,'F'):narrow(2,(k2-1)/2,k2):narrow(3,(k2-1)/2,k2) 
-    end
-    input_prev:copy(input) 
-    input:copy(norm_filters(output))
-end
-
-L = output:norm()
-
-
+X = ds_train:next() 
+Z = ConvFISTA(decoder,ds_train.data[1],30,0.5,600) 
