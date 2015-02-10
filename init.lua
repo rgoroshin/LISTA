@@ -9,5 +9,6 @@ require 'unsup'
 require 'data' 
 dofile('./Modules/init.lua') 
 dofile('util.lua') 
+dofile('inference.lua') 
 dofile('pbar.lua') 
 dofile('LISTA.lua') 

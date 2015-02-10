@@ -1,5 +1,5 @@
 dofile('init.lua') 
-cutorch.setDevice(1) 
+cutorch.setDevice(3) 
 exp_name = 'LISTA_LASSO/'
 save_dir = './Results/Experiments/'..exp_name
 os.execute('mkdir -p '..save_dir) 
