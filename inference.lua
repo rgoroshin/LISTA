@@ -74,7 +74,6 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
         return Y 
     end
     --infer codes for entire dataset 
-    print('FISTA interence...\n') 
     for i = 0,data:size(1)-n,n do 
         progress(i,data:size(1))
         X:copy(data:narrow(1,i+1,n))
@@ -104,11 +103,150 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     return codes
 end
 
---(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f()  
-train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs)
-    
-    print('Training encoder..') 
+construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
+--[We] = encoder (linear operator) 
+--[S] = 'explaining-away' (square linear operator)
+--[n] = number of LISTA loops 
+--WARNING: Assumes CudaTensor  
+    encoder = encoder:clone() 
+    local alpha = alpha or 0.5 
+    --initialize S 
+    local S = nn.Sequential() 
+    if torch.typename(encoder) == 'nn.Linear' then 
+        local We = encoder.weight:float()
+        local D = We:size(1) 
+        local Sw = torch.mm(We,We:t()) 
+        local _,L,_ = math.sqrt(torch.svd(We)[1]) 
+        Sw = torch.eye(D,D) - torch.mm(We,We:t()):div(L)   
+        S:add(nn.Linear(D,D))
+        S:get(1).weight:copy(Sw) 
+        S:get(1).bias:fill(-alpha/L)
+        S:cuda()
+        encoder:cuda()
+    elseif string.find(torch.typename(encoder),'nn.SpatialConvolution') then 
+        print('Initializing convolutional LISTA...') 
+        -- flip because conv2 flips whereas nn.SpatialConvolution will not 
+        local We = flip(encoder.weight) 
+        --dimensions (assume square, odd-sized kernels and stride = 1) 
+        local inplane = We:size(1) 
+        local outplane = We:size(2)
+        local k = We:size(3)
+        local padding = (k-1)/2
+        local pad = nn.SpatialPadding(padding,padding,padding,padding,3,4) 
+        local pad2 = nn.SpatialPadding(2*padding,2*padding,2*padding,2*padding,3,4) 
+        local Sw = torch.Tensor(outplane,outplane,2*k-1,2*k-1) 
+        for i = 1,outplane do
+            Sw[i] = torch.conv2(We:select(2,i),flip(We),'F') 
+        end
+        --find L using power method
+        if L == nil then  
+            local k2 = 2*k-1
+            local input = norm_filters(torch.rand(outplane,outplane,k2,k2)) 
+            local input_prev = input:clone() 
+            local output = input:clone():zero()
+            for i = 1,100 do 
+                progress(i,100)
+                for i = 1,outplane do
+                    output[i] = torch.conv2(input:select(2,i),Sw,'F'):narrow(2,(k2-1)/2,k2):narrow(3,(k2-1)/2,k2) 
+                end
+                input_prev:copy(input) 
+                input:copy(norm_filters(output))
+            end
+            L = output:norm() 
+        end
+        Sw:div(L) 
+        local I = torch.zeros(outplane,outplane,2*k-1,2*k-1) 
+        for i = 1,outplane do 
+            I[i][i][math.ceil(k-0.5)][math.ceil(k-0.5)] = 1 
+        end
+        Sw = I - Sw
+        S:add(pad2:clone()) 
+        S:add(nn.SpatialConvolutionFFT(outplane,outplane,2*k-1,2*k-1))
+        S:get(2).weight:copy(Sw) 
+        S:get(2).bias:fill(0)
+        S:cuda() 
+        encoder.weight:div(L) 
+        encoder.bias:fill(-alpha/L)
+        local encoder_same = nn.Sequential() 
+        encoder_same:add(pad:clone()) 
+        encoder_same:add(encoder) 
+        encoder = encoder_same:cuda() 
+    else 
+        error('Unsupported LISTA encoder') 
+    end
+    local internal_LISTA_loop = function(S) 
+        local net = nn.Sequential() 
+        local branch1 = nn.ParallelTable() 
+        local split = nn.ConcatTable() 
+        split:add(nn.Identity())
+        split:add(nn.Identity())
+        local ff = nn.Sequential() 
+        ff:add(nn.Threshold(0,0)) 
+        if untied_weights == true then 
+            ff:add(S:clone()) 
+        else
+            ff:add(S) 
+        end
+        branch1:add(split)
+        branch1:add(ff) 
+        net:add(branch1) 
+        local forward = function(x) return {x[1][1], {x[1][2], x[2]}} end
+        local backward = function(x) return {{x[1], x[2][1]}, x[2][2]} end  
+        net:add(nn.ReshapeTable(forward,backward))  
+        local branch2 = nn.ParallelTable() 
+        branch2:add(nn.Identity()) 
+        branch2:add(nn.CAddTable())
+        net:add(branch2) 
+        return net 
+    end
+    --first stage 
     local net = nn.Sequential() 
+    net:add(encoder)
+    if nloops == 0 then 
+        net:add(nn.Threshold(0,0)) 
+        net.encoder = encoder:get(2)  
+        net:cuda()
+        return net 
+    end 
+    local split = nn.ConcatTable() 
+    split:add(nn.Identity()) 
+    split:add(nn.Identity())
+    net:add(split) 
+    --internal stages
+    local nloops = nloops or 1
+    for i = 1, nloops-1 do 
+        net:add(internal_LISTA_loop(S)) 
+    end
+    --last stage 
+    local last_stage = nn.Sequential()
+    local branch = nn.ParallelTable() 
+    branch:add(nn.Identity()) 
+    local ff = nn.Sequential() 
+    ff:add(nn.Threshold(0,0)) 
+    if untied_weights == true then 
+        ff:add(S:clone()) 
+    else
+        ff:add(S) 
+    end
+    branch:add(ff) 
+    last_stage:add(branch) 
+    last_stage:add(nn.CAddTable()) 
+    last_stage:add(nn.Threshold(0,0)) 
+    net:add(last_stage) 
+    net:cuda() 
+    net.S = S:get(2) 
+    net.encoder = encoder:get(2) 
+    return net
+end 
+
+--(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f()  
+train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs,save_dir)
+    
+    local record_file = io.open(save_dir..'output.txt', 'a') 
+    record_file:write('Training Output:\n') 
+    record_file:close()
+    
+local net = nn.Sequential() 
     net:add(encoder) 
     net:add(nn.L1Penalty(true,l1w,true)) 
     net:add(decoder) 
@@ -144,13 +282,18 @@ train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs)
         local epoch_rec_error = epoch_rec_error/ds:size() 
         local average_loss = epoch_loss/ds:size()  
         local average_sparsity = epoch_sparsity/ds:size() 
-        print(tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss) 
+        local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
+        print(output) 
+        local record_file = io.open(save_dir..'output.txt', 'a') 
+        record_file:write(output..'\n') 
+        record_file:close()
         --Irec = image.toDisplayTensor({input=Xr,nrow=8,padding=1}) 
         --image.save(save_dir..'Irec.png', Irec)
         --Ienc = image.toDisplayTensor({input=encoder.weight:float(),nrow=8,padding=1}) 
         --image.save(save_dir..'enc.png', Ienc)
     end 
-
+    
+    return encoder 
 end
 
 
