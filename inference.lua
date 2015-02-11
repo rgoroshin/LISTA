@@ -32,7 +32,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     local n = 256 
     local inplane = decoder:get(2).weight:size(1)
     local outplane = decoder:get(2).weight:size(2) 
-    local codes = torch.Tensor(data:size(1),outplane,X:size(3),X:size(4))
+    local codes = torch.Tensor(data:size(1),outplane,data:size(3),data:size(4))
     local k = decoder:get(2).kW
     local padding = (k-1)/2
     local ConvDec = decoder:get(2) 
@@ -45,8 +45,8 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     encoder:cuda() 
     --Thresholding-operator 
     local threshold = nn.Threshold(0,0):cuda()  
-    local X = torch.CudaTensor(n,X:size(2),X:size(3),X:size(4))
-    local Zprev = torch.zeros(n,outplane,X:size(3),X:size(4)):cuda()
+    local X = torch.CudaTensor(n,data:size(2),data:size(3),data:size(4))
+    local Zprev = torch.zeros(n,outplane,data:size(3),data:size(4)):cuda()
     local Z = Zprev:clone() 
     local Y = Zprev:clone() 
     local Ynext = Zprev:clone() 
@@ -245,13 +245,16 @@ train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs,save_dir
     local record_file = io.open(save_dir..'output.txt', 'a') 
     record_file:write('Training Output:\n') 
     record_file:close()
+    local inplane = decoder:get(2).weight:size(1)
+    local outplane = decoder:get(2).weight:size(2) 
     
-local net = nn.Sequential() 
+    local net = nn.Sequential() 
     net:add(encoder) 
-    net:add(nn.L1Penalty(true,l1w,true)) 
+    net:add(nn.ModuleL1Penalty(true,l1w,true)) 
     net:add(decoder) 
     net:cuda() 
     local criterion = nn.MSECriterion():cuda() 
+    local loss_plot = torch.zeros(epochs)
     
     for iter = 1,epochs do 
         local epoch_loss = 0 
@@ -281,6 +284,7 @@ local net = nn.Sequential()
         end
         local epoch_rec_error = epoch_rec_error/ds:size() 
         local average_loss = epoch_loss/ds:size()  
+        loss_plot[iter] = average_loss
         local average_sparsity = epoch_sparsity/ds:size() 
         local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
         print(output) 
@@ -293,7 +297,7 @@ local net = nn.Sequential()
         --image.save(save_dir..'enc.png', Ienc)
     end 
     
-    return encoder 
+    return encoder,loss_plot 
 end
 
 

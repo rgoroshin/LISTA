@@ -9,7 +9,7 @@ torch.setnumthreads(8)
 math.randomseed(123)
 cutorch.manualSeed(123) 
 torch.manualSeed(123)
-exp_name = 'EXP1' 
+exp_name = 'EXP1_2' 
 save_dir = './Results/Experiments/'..exp_name..'/' 
 --loss 
 l1w = 0.5 
@@ -17,11 +17,15 @@ l1w = 0.5
 bsz = 16 
 --configs 
 configs = {} 
---configs[1] = {name='FISTA',niter=10,l1w=l1w} 
+configs[1] = {name='FISTA',niter=10,l1w=l1w} 
 --LISTA with untied weights 
---configs[1] = {name='LISTA',nloops=0,untied_weights=false,l1w=l1w,learn_rate=0.1,epochs=1} 
---configs[1] = {name='LISTA',nloops=3,untied_weights=false,l1w=l1w,learn_rate=0.01,epochs=3,save_dir=save_dir} 
-configs[1] = {name='LISTA',nloops=3,untied_weights=true,l1w=l1w,learn_rate=0.01,epochs=3,save_dir=save_dir} 
+configs[2] = {name='LISTA',nloops=0,untied_weights=false,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
+configs[3] = {name='LISTA',nloops=1,untied_weights=false,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
+configs[4] = {name='LISTA',nloops=3,untied_weights=false,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
+configs[5] = {name='LISTA',nloops=5,untied_weights=false,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
+configs[6] = {name='LISTA',nloops=1,untied_weights=true,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
+configs[7] = {name='LISTA',nloops=3,untied_weights=true,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
+configs[8] = {name='LISTA',nloops=5,untied_weights=true,l1w=l1w,learn_rate=0.001,epochs=10,save_dir=save_dir} 
 --configs[4] = {name='LISTA',nloops=3,untied_weights=false} 
 --configs[5] = {name='LISTA',nloops=5,untied_weights=false} 
 ----LISTA with untied weights 

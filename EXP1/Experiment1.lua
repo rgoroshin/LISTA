@@ -39,7 +39,7 @@ decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7')
 L = decoder.L or 1.05*findMaxEigenValue(decoder)
 
 get_codes = function(config,decoder,ds_train,ds_test) 
-    local Ztrain, Ztest 
+    local Ztrain,Ztest,loss_plot 
     if config.name == 'FISTA' then 
         print('FISTA interence...')
         Ztrain = ConvFISTA(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
@@ -51,36 +51,40 @@ get_codes = function(config,decoder,ds_train,ds_test)
         local We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
         We.weight:copy(flip(decoder:get(2).weight)) 
         We.bias:fill(0)
-        --local 
-        encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+        local encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
         --training
         print('Training LISTA via lasso..')
-        encoder = train_encoder_lasso(encoder,decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+        encoder,loss_plot = train_encoder_lasso(encoder,decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
         Ztrain = transform_data(ds_train.data[1],encoder)
         Ztest = transform_data(ds_test.data[1],encoder)
     else 
         error('Unsuported encoding config') 
     end 
-    return Ztrain, Ztest 
+    return Ztrain, Ztest, loss_plot  
 end
 
-all_results = {} 
-
+results = {} 
+plots = {} 
 for i=1,#configs do 
     configs[i].L = L
-    output = serializeTable(configs[i])
     local record_file = io.open(save_dir..'output.txt', 'a') 
-    record_file:write(output..'\n') 
+    record_file:write('========Config'..i..'========\n') 
+    record_file:write(serializeTable(configs[i])..'\n') 
     record_file:close()
-    Ztrain,Ztest = get_codes(configs[i],decoder,ds_train,ds_test)
-    eval_test = eval_sparse_code(ds_test.data[1],Ztest,decoder,_l1w)
-    eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,_l1w)
-    output = output..'\nEval Train\n'..serializeTable(eval_train)..'\n' 
-    output = output..'Eval Test\n'..serializeTable(eval_test) 
+    Ztrain,Ztest,loss_plot = get_codes(configs[i],decoder,ds_train,ds_test)
+    eval_test = eval_sparse_code(ds_test.data[1],Ztest,decoder,configs[i].l1w)
+    eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,configs[i].l1w)
+    output = '\nEval Train\n'..serializeTable(eval_train)..'\n' 
+    output = output..'Eval Test\n'..serializeTable(eval_test)..'\n' 
     local record_file = io.open(save_dir..'output.txt', 'a') 
     record_file:write(output..'\n') 
     record_file:close()
     results[i] = {config=configs[i],train=eval_train,test=eval_test} 
-    torch.save(save_dir,'results.t7') 
+    if configs[i].name == 'LISTA' then 
+        plots[#plots+1] = {i..'-'..configs[i].name,torch.range(1,configs[i].epochs),loss_plot,'+'}
+        gnuplot.plot(plots) 
+        gnuplot.figprint(save_dir..'loss_plot.pdf')
+        gnuplot.closeall() 
+    end
+    torch.save(save_dir..'results.t7',results) 
 end
-
