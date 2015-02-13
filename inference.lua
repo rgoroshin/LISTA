@@ -241,10 +241,11 @@ end
 
 --(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f()  
 train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs,save_dir)
-    
-    local record_file = io.open(save_dir..'output.txt', 'a') 
-    record_file:write('Training Output:\n') 
-    record_file:close()
+    if save_dir ~= nil then  
+        local record_file = io.open(save_dir..'output.txt', 'a') 
+        record_file:write('Training Output:\n') 
+        record_file:close()
+    end
     local inplane = decoder:get(2).weight:size(1)
     local outplane = decoder:get(2).weight:size(2) 
     
@@ -288,15 +289,12 @@ train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs,save_dir
         local average_sparsity = epoch_sparsity/ds:size() 
         local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
         print(output) 
-        local record_file = io.open(save_dir..'output.txt', 'a') 
-        record_file:write(output..'\n') 
-        record_file:close()
-        --Irec = image.toDisplayTensor({input=Xr,nrow=8,padding=1}) 
-        --image.save(save_dir..'Irec.png', Irec)
-        --Ienc = image.toDisplayTensor({input=encoder.weight:float(),nrow=8,padding=1}) 
-        --image.save(save_dir..'enc.png', Ienc)
+        if save_dir ~= nil then  
+            local record_file = io.open(save_dir..'output.txt', 'a') 
+            record_file:write(output..'\n') 
+            record_file:close()
+        end
     end 
-    
     return encoder,loss_plot 
 end
 

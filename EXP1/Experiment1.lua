@@ -29,7 +29,7 @@ if test_data == nil then
 end
 
 --data sources 
-ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
+ds_small = DataSource({dataset = train_data:narrow(1,1,300), batchSize = bsz})
 ds_train = DataSource({dataset = train_data, batchSize = bsz})
 ds_test = DataSource({dataset = test_data, batchSize = bsz})
 
@@ -45,6 +45,12 @@ get_codes = function(config,decoder,ds_train,ds_test)
         Ztrain = ConvFISTA(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
         Ztest = ConvFISTA(decoder,ds_test.data[1],config.niter,config.l1w,config.L) 
     elseif config.name == 'LISTA' then 
+        if config.learn_rate == nil then 
+            config.learn_rate = find_learn_rate(encoder,decoder,ds_small,config.l1w)
+            local record_file = io.open(save_dir..'output.txt', 'a') 
+            record_file:write('found learn_rate = '..learn_rate..'\n') 
+            record_file:close()
+        end
         local inplane = decoder:get(2).weight:size(1)
         local outplane = decoder:get(2).weight:size(2) 
         local k = decoder:get(2).kW
