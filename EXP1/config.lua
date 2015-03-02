@@ -18,10 +18,16 @@ bsz = 16
 --configs 
 configs = {} 
 configs[1] = {name='FISTA',niter=100,l1w=l1w} 
---LISTA with untied weights 
-configs[2] = {name='LISTA',nloops=0,untied_weights=false,l1w=l1w,learn_rate=nil,epochs=100,save_dir=save_dir} 
-configs[3] = {name='LISTA',nloops=1,untied_weights=false,l1w=l1w,learn_rate=nil,epochs=100,save_dir=save_dir} 
-configs[4] = {name='LISTA',nloops=3,untied_weights=false,l1w=l1w,learn_rate=nil,epochs=100,save_dir=save_dir} 
-configs[5] = {name='LISTA',nloops=0,untied_weights=true,l1w=l1w,learn_rate=nil,epochs=100,save_dir=save_dir} 
-configs[6] = {name='LISTA',nloops=1,untied_weights=true,l1w=l1w,learn_rate=nil,epochs=100,save_dir=save_dir} 
-configs[7] = {name='LISTA',nloops=3,untied_weights=true,l1w=l1w,learn_rate=nil,epochs=100,save_dir=save_dir} 
+----LISTA with untied weights 
+configs[2]  = {name='LISTA',nloops=0,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[3]  = {name='LISTA',nloops=1,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[4]  = {name='LISTA',nloops=3,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[5]  = {name='LISTA',nloops=0,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[6]  = {name='LISTA',nloops=1,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[7]  = {name='LISTA',nloops=3,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[8]  = {name='ReLUnet',nlayers=0,tied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[9]  = {name='ReLUnet',nlayers=1,tied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[10] = {name='ReLUnet',nlayers=3,tied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[11] = {name='ReLUnet',nlayers=0,tied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[12] = {name='ReLUnet',nlayers=1,tied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 
+configs[13] = {name='ReLUnet',nlayers=3,tied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=nil,epochs=30,save_dir=save_dir} 

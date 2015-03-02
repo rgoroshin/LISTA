@@ -22,6 +22,30 @@ function serializeTable(val, name, skipnewlines, depth)
     return tmp
 end
 
+flip = function(W) 
+    local reverse = function(x) 
+        local n = x:size(1) 
+        for i = 1,math.floor(n/2) do 
+            local tmp = x[i]
+            x[i] = x[n-i+1]
+            x[n-i+1] = tmp
+        end 
+        return x 
+    end
+    local Wt = W:clone():transpose(1,2)  
+    for i = 1,Wt:size(1) do
+        for j = 1,Wt:size(2) do  
+            for n = 1,Wt:size(3) do 
+                reverse(Wt[i][j][n])
+            end
+            for n = 1,Wt:size(4) do 
+                reverse(Wt[i][j]:select(2,n))
+            end
+        end
+    end 
+    return Wt  
+end 
+
 transform_data = function(data, net, n) 
 --transforms the data [[nsamples]x[dim]] using the :forward 
 --function of the auto-encoder network [net] 
@@ -71,7 +95,7 @@ ls_in_dir = function(data_dir, ls_command)
     return list 
 end
 
-find_learn_rate = function(encoder,decoder,ds_small,l1w,epochs,niter,max,min,res)
+find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter,max,min,res)
     --finds the optimal learning rate for [net] optimized by calling [foptim]
     --the trained network is evaluated by calling [feval]. 
     --This function uses a coarse-to-fine searchof depth [niter] to find
@@ -79,19 +103,20 @@ find_learn_rate = function(encoder,decoder,ds_small,l1w,epochs,niter,max,min,res
     print('Finding optimal learning rate...') 
     local min = min or -6 
     local max = max or -1
-    local res = res or 10 
+    local res = res or 5 
     local grid = torch.logspace(min,max,res)
     local best_learn_rate = 0 
     niter = niter or 2 
     epochs = epochs or 3 
-    
     for iter = 1,niter do
         print('Level '..iter..' of '..niter) 
+        print(grid) 
         local loss_grid = grid:clone():zero()
         for i = 1,grid:size(1) do
             local learn_rate = grid[i] 
-            local init_encoder = encoder:clone() 
-            local trained_encoder = train_encoder_lasso(init_encoder,decoder,ds_small,l1w,learn_rate,epochs)
+            local init_encoder = encoder:clone()
+            local init_decoder = decoder:clone() 
+            local trained_encoder = minimize_lasso_sgd(init_encoder,init_decoder,fix_decoder,ds_small,l1w,learn_rate,epochs)
             local Z = transform_data(ds_small.data[1],trained_encoder)
             local eval = eval_sparse_code(ds_small.data[1],Z,decoder,l1w) 
             loss_grid[i] = eval.average_loss

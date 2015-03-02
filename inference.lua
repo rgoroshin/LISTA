@@ -103,6 +103,29 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     return codes
 end
 
+construct_deep_net = function(nlayers,inplane,outplane,k,tied_weights)
+--deep ReLU network with [optionally] shared weights
+    local padding = (k-1)/2
+    local pad = nn.SpatialPadding(padding,padding,padding,padding,3,4) 
+    local net = nn.Sequential() 
+    local conv1 = nn.SpatialConvolutionFFT(inplane,outplane,k,k) 
+    net:add(pad:clone())
+    net:add(conv1) 
+    net:add(nn.Threshold(0,0))
+    local conv = nn.SpatialConvolutionFFT(outplane,outplane,k,k) 
+    for i=2,nlayers do 
+        local conv_clone = conv:clone()         
+        if tied_weights==true then  
+            conv_clone:share(conv, 'weight') 
+            conv_clone:share(conv, 'bias') 
+        end 
+        net:add(pad:clone()) 
+        net:add(conv_clone) 
+        net:add(nn.Threshold(0,0))
+    end
+    return net 
+end
+
 construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
 --[We] = encoder (linear operator) 
 --[S] = 'explaining-away' (square linear operator)
@@ -239,8 +262,8 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     return net
 end 
 
---(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f()  
-train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs,save_dir)
+--(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D)  
+minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epochs,save_dir)
     if save_dir ~= nil then  
         local record_file = io.open(save_dir..'output.txt', 'a') 
         record_file:write('Training Output:\n') 
@@ -272,8 +295,11 @@ train_encoder_lasso = function(encoder,decoder,ds,l1w,learn_rate,epochs,save_dir
            local rec_grad = criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
            net:backward(X,rec_grad)
            --fixed decoder 
-           net:get(3):get(2).gradWeight:fill(0) 
-           net:get(3):get(2).gradBias:fill(0) 
+           if fix_decoder == true then 
+            net:get(3):get(2).gradWeight:fill(0) 
+            net:get(3):get(2).gradBias:fill(0)
+           end
+           --training a decoder 
            net:updateParameters(learn_rate) 
            --track loss 
            local sample_rec_error = Xr:clone():add(-1,X):pow(2):mean()/X:clone():pow(2):mean()

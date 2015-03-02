@@ -2,7 +2,7 @@
 --iterative (FISTA) inference in a *fixed* dictionary. The
 --learned encoders will be trained minimizing the lasso w.r.t.
 --the parameters of the encoder, i.e.
---s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f()  
+--s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D) 
 --The list of encoders/codes obtained via inference to compare 
 --can be found in EXP1/config.lua 
 --======================================
@@ -45,12 +45,6 @@ get_codes = function(config,decoder,ds_train,ds_test)
         Ztrain = ConvFISTA(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
         Ztest = ConvFISTA(decoder,ds_test.data[1],config.niter,config.l1w,config.L) 
     elseif config.name == 'LISTA' then 
-        if config.learn_rate == nil then 
-            config.learn_rate = find_learn_rate(encoder,decoder,ds_small,config.l1w)
-            local record_file = io.open(save_dir..'output.txt', 'a') 
-            record_file:write('found learn_rate = '..learn_rate..'\n') 
-            record_file:close()
-        end
         local inplane = decoder:get(2).weight:size(1)
         local outplane = decoder:get(2).weight:size(2) 
         local k = decoder:get(2).kW
@@ -58,9 +52,31 @@ get_codes = function(config,decoder,ds_train,ds_test)
         We.weight:copy(flip(decoder:get(2).weight)) 
         We.bias:fill(0)
         local encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+        if config.learn_rate == nil then 
+            config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
+            local record_file = io.open(save_dir..'output.txt', 'a') 
+            record_file:write('found learn_rate = '..config.learn_rate..'\n') 
+            record_file:close()
+        end
         --training
         print('Training LISTA via lasso..')
-        encoder,loss_plot = train_encoder_lasso(encoder,decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+        encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+        Ztrain = transform_data(ds_train.data[1],encoder)
+        Ztest = transform_data(ds_test.data[1],encoder)
+    elseif config.name == 'ReLUnet' then 
+        local inplane = decoder:get(2).weight:size(1)
+        local outplane = decoder:get(2).weight:size(2) 
+        local k = decoder:get(2).kW
+        local encoder = construct_deep_net(config.nlayers,inplane,outplane,k,config.tied_weights)
+        if config.learn_rate == nil then 
+            config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
+            local record_file = io.open(save_dir..'output.txt', 'a') 
+            record_file:write('found learn_rate = '..config.learn_rate..'\n') 
+            record_file:close()
+        end
+        --training
+        print('Training ReLU network via lasso..')
+        encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
         Ztrain = transform_data(ds_train.data[1],encoder)
         Ztest = transform_data(ds_test.data[1],encoder)
     else 

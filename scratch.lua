@@ -13,23 +13,26 @@ if test_data == nil then
     test_data = test_data.datacn:resize(10000,3,32,32) 
 end
 
+
+net = construct_deep_net(3,3,32,9,true) 
+
 --data sources 
-config = {nloops=3,l1w=0.5,L=600,untied_weights=false} 
-bsz = 16 
-ds_small = DataSource({dataset = train_data:narrow(1,1,300), batchSize = bsz})
-ds_train = DataSource({dataset = train_data, batchSize = bsz})
-ds_test = DataSource({dataset = test_data, batchSize = bsz})
-
-decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
-inplane = decoder:get(2).weight:size(1)
-outplane = decoder:get(2).weight:size(2) 
-k = decoder:get(2).weight:size(3) 
-We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
-We.weight:copy(flip(decoder:get(2).weight)) 
-We.bias:fill(0)
-encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
-
-learn_rate = find_learn_rate(encoder,decoder,ds_small,config.l1w)
+--config = {nloops=3,l1w=0.5,L=600,untied_weights=false} 
+--bsz = 16 
+--ds_small = DataSource({dataset = train_data:narrow(1,1,300), batchSize = bsz})
+--ds_train = DataSource({dataset = train_data, batchSize = bsz})
+--ds_test = DataSource({dataset = test_data, batchSize = bsz})
+--
+--decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
+--inplane = decoder:get(2).weight:size(1)
+--outplane = decoder:get(2).weight:size(2) 
+--k = decoder:get(2).weight:size(3) 
+--We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
+--We.weight:copy(flip(decoder:get(2).weight)) 
+--We.bias:fill(0)
+--encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+--
+--learn_rate = find_learn_rate(encoder,decoder,ds_small,config.l1w)
 --encoder,loss_plot = train_encoder_lasso(encoder,decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
 
 
