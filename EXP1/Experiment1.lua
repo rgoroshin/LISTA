@@ -29,7 +29,7 @@ if test_data == nil then
 end
 
 --data sources 
-ds_small = DataSource({dataset = train_data:narrow(1,1,300), batchSize = bsz})
+ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
 ds_train = DataSource({dataset = train_data, batchSize = bsz})
 ds_test = DataSource({dataset = test_data, batchSize = bsz})
 
@@ -102,7 +102,7 @@ for i=1,#configs do
     record_file:write(output..'\n') 
     record_file:close()
     results[i] = {config=configs[i],train=eval_train,test=eval_test} 
-    if configs[i].name == 'LISTA' then 
+    if configs[i].name == 'LISTA' or configs[i].name == 'ReLUnet' then 
         plots[#plots+1] = {i..'-'..configs[i].name,torch.range(1,configs[i].epochs),loss_plot,'+'}
         gnuplot.plot(plots) 
         gnuplot.figprint(save_dir..'loss_plot.pdf')
