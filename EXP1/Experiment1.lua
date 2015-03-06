@@ -63,11 +63,11 @@ get_codes = function(config,decoder,ds_train,ds_test)
         encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
         Ztrain = transform_data(ds_train.data[1],encoder)
         Ztest = transform_data(ds_test.data[1],encoder)
-    elseif config.name == 'ReLUnet' then 
+    elseif config.name == 'ReLU' then 
         local inplane = decoder:get(2).weight:size(1)
         local outplane = decoder:get(2).weight:size(2) 
         local k = decoder:get(2).kW
-        local encoder = construct_deep_net(config.nlayers,inplane,outplane,k,config.tied_weights)
+        local encoder = construct_deep_net(config.nlayers,inplane,outplane,k,config.untied_weights,config)
         if config.learn_rate == nil then 
             config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
             local record_file = io.open(save_dir..'output.txt', 'a') 
@@ -90,7 +90,9 @@ plots = {}
 for i=1,#configs do 
     configs[i].L = L
     rpt = torch.Tensor(configs[i].repeat_exp) 
-    results[i]={train={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()}}
+    results[i]={config=configs[i].name, 
+                train={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()},
+                test ={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()}}
     plots[i]={} 
     for j=1,configs[i].repeat_exp do 
         local record_file = io.open(save_dir..'output.txt', 'a') 
@@ -105,10 +107,10 @@ for i=1,#configs do
         local record_file = io.open(save_dir..'output.txt', 'a') 
         record_file:write(output..'\n') 
         record_file:close()
-        results[i].train.loss[j] = eval_train.loss 
+        results[i].train.loss[j] = eval_train.average_loss 
         results[i].train.rec[j] = eval_train.average_relative_rec_error  
         results[i].train.sparsity[j] = eval_train.average_sparsity 
-        results[i].test.loss[j] = eval_test.loss 
+        results[i].test.loss[j] = eval_test.average_loss 
         results[i].test.rec[j] = eval_test.average_relative_rec_error  
         results[i].test.sparsity[j] = eval_test.average_sparsity 
         if type(configs[i].epochs) == 'number' then 
@@ -117,70 +119,8 @@ for i=1,#configs do
         torch.save(save_dir..'loss_plot.t7',plots) 
         torch.save(save_dir..'results.t7',results) 
     end 
+    plot_results(results,configs,save_dir) 
 end
-
---compute stats over multiple runs 
-results = torch.load(save_dir..'results.t7')
-results.average = {} 
-for i=1,#results do 
-    local test = {}
-    local train = {} 
-    train.loss = 0 
-    train.sparsity = 0 
-    train.rec = 0 
-    test.loss = 0 
-    test.sparsity = 0 
-    test.rec = 0 
-    local n = #results[i]
-    for j=1,n do 
-        train.loss = train.loss + results[i][j].train.average_loss  
-        train.sparsity = train.sparsity + results[i][j].train.average_sparsity  
-        train.rec = train.rec + results[i][j].train.average_relative_rec_error 
-        test.loss = train.loss + results[i][j].train.average_loss  
-        test.sparsity = train.sparsity + results[i][j].train.average_sparsity  
-        test.rec = train.rec + results[i][j].train.average_relative_rec_error 
-    end
-    train.loss = train.loss/n 
-    train.sparsity = train.sparsity/n 
-    train.rec = train.rec/n 
-    test.loss = train.loss/n 
-    test.sparsity = train.sparsity/n 
-    test.rec = train.rec/n
-    train.loss_std = 0
-    train.sparsity_std = 0
-    train.rec_std = 0
-    test.loss_std = 0
-    test.sparsity_std = 0
-    test.rec_std = 0
-    for j=1,n do 
-        train.loss_std = train.loss_std + (results[i][j].train.average_loss - train.loss)^2  
-        train.sparsity_std = train.sparsity_std + (results[i][j].train.average_sparsity - train.sparsity)^2
-        train.rec_std = train.rec_std + (results[i][j].train.average_relative_rec_error - train.rec)^2
-        test.loss_std = test.loss_std + (results[i][j].test.average_loss - test.loss)^2  
-        test.sparsity_std = test.sparsity_std + (results[i][j].test.average_sparsity - test.sparsity)^2 
-        test.rec_std = test.rec_std + (results[i][j].test.average_relative_rec_error - test.rec)^2
-    end
-    train.loss_std = math.sqrt(train.loss_std/(n-1)) 
-    train.sparsity_std = math.sqrt(train.sparsity_std/(n-1))
-    train.rec_std = math.sqrt(train.rec_std/(n-1))
-    test.loss_std = math.sqrt(test.loss_std/(n-1))
-    test.sparsity_std = math.sqrt(test.sparsity_std/(n-1))
-    test.rec_std = math.sqrt(test.rec_std/(n-1))
-    
-    results.average[i] = {train=train,test=test}
-end
-torch.save(save_dir..'results.t7',results) 
-
-
-
-
-
-
-
-
-
-
-
 
 
 

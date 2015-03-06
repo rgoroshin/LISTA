@@ -1,28 +1,72 @@
 dofile('init.lua') 
 cutorch.setDevice(2)
 
-decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
 
---load the data 
-if train_data == nil then 
-    train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
-    train_data = train_data.datacn:resize(50000,3,32,32) 
+results[1].train.loss = torch.rand(10) 
+results[1].test.loss = torch.rand(10) 
+results[2].train.loss = torch.rand(10) 
+results[2].test.loss = torch.rand(10) 
+
+--mean and standard dev of final losses 
+loss_comparison_plot = {train=torch.Tensor(2,#results),test=torch.Tensor(2,#results)} 
+xtics = '('
+for i = 1,#results do 
+    local tied_weights = '' 
+    if configs[i].tied_weights == true then 
+        tied_weights = 't' 
+    elseif configs then 
+        tied_weights = 'ut' 
+    end
+    nlayers = configs[i].nlayers or 0
+    xtics = xtics..'"'..configs[i].name..nlayers..tied_weights..'" '..i..', '
+    loss_comparison_plot.train[1][i] = results[i].train.loss:mean() 
+    loss_comparison_plot.train[2][i] = results[i].train.loss:std()*0.5 
+    loss_comparison_plot.test[1][i] = results[i].test.loss:mean() 
+    loss_comparison_plot.test[2][i] = results[i].test.loss:std()*0.5 
 end
-if test_data == nil then 
-    test_data = torch.load('./Data/CIFAR/CIFAR_CN_test.t7')
-    test_data = test_data.datacn:resize(10000,3,32,32) 
-end
+xtics = xtics..')\''
+gnuplot.plot({'Train Loss',torch.range(1,#results),loss_comparison_plot.train[1],'+-'},
+             --{'Test Loss',torch.range(1,#results),loss_comparison_plot.test[1],'+-'},
+             {torch.range(1,#results),loss_comparison_plot.train[1]+loss_comparison_plot.train[2],'+'},
+             {torch.range(1,#results),loss_comparison_plot.train[1]-loss_comparison_plot.train[2],'+'}) 
+             --{torch.range(1,#results),loss_comparison_plot.test[1]+loss_comparison_plot.test[2],'+'},
+             --{torch.range(1,#results),loss_comparison_plot.test[1]-loss_comparison_plot.test[2],'+'}) 
+gnuplot.raw('set xtics '..xtics)
+gnuplot.figprint(save_dir..'loss_summary.pdf')
+gnuplot.closeall() 
 
 
---inplane = decoder:get(2).weight:size(1)
---outplane = decoder:get(2).weight:size(2) 
---k = decoder:get(2).kW
---We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
---We.weight:copy(flip(decoder:get(2).weight)) 
---We.bias:fill(0)
---LISTA = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
-net = construct_deep_net(3,3,32,9,true) 
 
+
+
+
+
+
+
+
+
+--decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
+--
+----load the data 
+--if train_data == nil then 
+--    train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
+--    train_data = train_data.datacn:resize(50000,3,32,32) 
+--end
+--if test_data == nil then 
+--    test_data = torch.load('./Data/CIFAR/CIFAR_CN_test.t7')
+--    test_data = test_data.datacn:resize(10000,3,32,32) 
+--end
+--
+--
+----inplane = decoder:get(2).weight:size(1)
+----outplane = decoder:get(2).weight:size(2) 
+----k = decoder:get(2).kW
+----We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
+----We.weight:copy(flip(decoder:get(2).weight)) 
+----We.bias:fill(0)
+----LISTA = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+--net = construct_deep_net(3,3,32,9,true) 
+--
 --data sources 
 --config = {nloops=3,l1w=0.5,L=600,untied_weights=false} 
 --bsz = 16 

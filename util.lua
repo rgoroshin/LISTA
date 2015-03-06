@@ -1,3 +1,40 @@
+plot_results = function(results,configs,save_dir) 
+    --mean and standard dev of final losses 
+    local loss_comparison_plot = {train=torch.zeros(2,#results),test=torch.zeros(2,#results)} 
+    local xtics = '('
+    for i = 1,#results do 
+        local tied_weights = '' 
+        if configs[i].untied_weights==true then 
+            tied_weights = 'ut' 
+        elseif configs[i].untied_weights==false then 
+            tied_weights = 't' 
+        end
+        nlayers = configs[i].nlayers or configs[i].nloops or 0
+        xtics = xtics..'"'..configs[i].name..nlayers..tied_weights..'" '..i..', '
+        loss_comparison_plot.train[1][i] = results[i].train.loss:mean() 
+        loss_comparison_plot.test[1][i] = results[i].test.loss:mean() 
+        local std_train = results[i].train.loss:std()*0.5 
+        local std_test = results[i].test.loss:std()*0.5 
+        if std_train ~= std_train then std_train = 0 end 
+        if std_test ~= std_test then std_test = 0 end 
+        loss_comparison_plot.train[2][i] = std_train  
+        loss_comparison_plot.test[2][i] = std_test 
+    end
+    xtics = xtics..')\''
+    gnuplot.plot({'Train Loss',torch.range(1,#results),loss_comparison_plot.train[1],'+-'},
+                 --{'Test Loss',torch.range(1,#results),loss_comparison_plot.test[1],'+-'},
+                 {torch.range(1,#results),loss_comparison_plot.train[1]+loss_comparison_plot.train[2],'+'},
+                 {torch.range(1,#results),loss_comparison_plot.train[1]-loss_comparison_plot.train[2],'+'}) 
+                 --{torch.range(1,#results),loss_comparison_plot.test[1]+loss_comparison_plot.test[2],'+'},
+                 --{torch.range(1,#results),loss_comparison_plot.test[1]-loss_comparison_plot.test[2],'+'}) 
+    gnuplot.raw('set xtics font ", 3" '..xtics)
+    gnuplot.figprint(save_dir..'loss_summary.pdf')
+    gnuplot.closeall() 
+
+   -- local scatter_comparison_plot = {train=torch.zeros(2,#results),test=torch.zeros(2,#results)} 
+     
+end
+
 function serializeTable(val, name, skipnewlines, depth)
     --this function is used for printing config tables 
     skipnewlines = skipnewlines or false
@@ -110,7 +147,6 @@ find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter
     epochs = epochs or 3 
     for iter = 1,niter do
         print('Level '..iter..' of '..niter) 
-        print(grid) 
         local loss_grid = grid:clone():zero()
         for i = 1,grid:size(1) do
             local learn_rate = grid[i] 

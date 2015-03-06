@@ -103,7 +103,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     return codes
 end
 
-construct_deep_net = function(nlayers,inplane,outplane,k,tied_weights)
+construct_deep_net = function(nlayers,inplane,outplane,k,untied_weights,config)
 --deep ReLU network with [optionally] shared weights (inialized identically to LISTA) 
     print('Initilizing deep ReLU from LISTA init') 
     local We = nn.SpatialConvolutionFFT(inplane,outplane,k,k) 
@@ -118,7 +118,7 @@ construct_deep_net = function(nlayers,inplane,outplane,k,tied_weights)
     net:add(nn.Threshold(0,0))
     for i=2,nlayers do 
         local conv_clone = conv:clone()         
-        if tied_weights==true then  
+        if untied_weights==false then  
             conv_clone:share(conv, 'weight') 
             conv_clone:share(conv, 'bias') 
         end 
