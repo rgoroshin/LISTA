@@ -103,7 +103,7 @@ find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter
     print('Finding optimal learning rate...') 
     local min = min or -6 
     local max = max or -1
-    local res = res or 10 
+    local res = res or 3 
     local grid = torch.logspace(min,max,res)
     local best_learn_rate = 0 
     niter = niter or 2 

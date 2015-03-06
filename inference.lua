@@ -104,22 +104,25 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
 end
 
 construct_deep_net = function(nlayers,inplane,outplane,k,tied_weights)
---deep ReLU network with [optionally] shared weights
-    local padding = (k-1)/2
-    local pad = nn.SpatialPadding(padding,padding,padding,padding,3,4) 
+--deep ReLU network with [optionally] shared weights (inialized identically to LISTA) 
+    print('Initilizing deep ReLU from LISTA init') 
+    local We = nn.SpatialConvolutionFFT(inplane,outplane,k,k) 
+    local LISTA = construct_LISTA(We,1,config.l1w,config.L,config.untied_weights)
+    local pad1 = LISTA.pad1
+    local pad2 = LISTA.pad2
+    local conv1 = LISTA.encoder 
+    local conv = LISTA.S 
     local net = nn.Sequential() 
-    local conv1 = nn.SpatialConvolutionFFT(inplane,outplane,k,k) 
-    net:add(pad:clone())
+    net:add(pad1:clone())
     net:add(conv1) 
     net:add(nn.Threshold(0,0))
-    local conv = nn.SpatialConvolutionFFT(outplane,outplane,k,k) 
     for i=2,nlayers do 
         local conv_clone = conv:clone()         
         if tied_weights==true then  
             conv_clone:share(conv, 'weight') 
             conv_clone:share(conv, 'bias') 
         end 
-        net:add(pad:clone()) 
+        net:add(pad2:clone()) 
         net:add(conv_clone) 
         net:add(nn.Threshold(0,0))
     end
@@ -259,6 +262,8 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     net:cuda() 
     net.S = S:get(2) 
     net.encoder = encoder:get(2) 
+    net.pad1 = net:get(1):get(1) 
+    net.pad2 = S:get(1) 
     return net
 end 
 

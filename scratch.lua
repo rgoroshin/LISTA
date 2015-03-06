@@ -14,6 +14,13 @@ if test_data == nil then
 end
 
 
+--inplane = decoder:get(2).weight:size(1)
+--outplane = decoder:get(2).weight:size(2) 
+--k = decoder:get(2).kW
+--We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
+--We.weight:copy(flip(decoder:get(2).weight)) 
+--We.bias:fill(0)
+--LISTA = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
 net = construct_deep_net(3,3,32,9,true) 
 
 --data sources 
