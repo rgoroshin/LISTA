@@ -1,39 +1,46 @@
 dofile('init.lua') 
 cutorch.setDevice(2)
 
+save_dir = './Results/Experiments/EXP1/'
+--configs
+dofile('./EXP1/config.lua') 
+results = torch.load('./Results/Experiments/EXP1/results.t7')
 
-results[1].train.loss = torch.rand(10) 
-results[1].test.loss = torch.rand(10) 
-results[2].train.loss = torch.rand(10) 
-results[2].test.loss = torch.rand(10) 
+plot_results(results,configs,save_dir) 
 
---mean and standard dev of final losses 
-loss_comparison_plot = {train=torch.Tensor(2,#results),test=torch.Tensor(2,#results)} 
-xtics = '('
-for i = 1,#results do 
-    local tied_weights = '' 
-    if configs[i].tied_weights == true then 
-        tied_weights = 't' 
-    elseif configs then 
-        tied_weights = 'ut' 
-    end
-    nlayers = configs[i].nlayers or 0
-    xtics = xtics..'"'..configs[i].name..nlayers..tied_weights..'" '..i..', '
-    loss_comparison_plot.train[1][i] = results[i].train.loss:mean() 
-    loss_comparison_plot.train[2][i] = results[i].train.loss:std()*0.5 
-    loss_comparison_plot.test[1][i] = results[i].test.loss:mean() 
-    loss_comparison_plot.test[2][i] = results[i].test.loss:std()*0.5 
-end
-xtics = xtics..')\''
-gnuplot.plot({'Train Loss',torch.range(1,#results),loss_comparison_plot.train[1],'+-'},
-             --{'Test Loss',torch.range(1,#results),loss_comparison_plot.test[1],'+-'},
-             {torch.range(1,#results),loss_comparison_plot.train[1]+loss_comparison_plot.train[2],'+'},
-             {torch.range(1,#results),loss_comparison_plot.train[1]-loss_comparison_plot.train[2],'+'}) 
-             --{torch.range(1,#results),loss_comparison_plot.test[1]+loss_comparison_plot.test[2],'+'},
-             --{torch.range(1,#results),loss_comparison_plot.test[1]-loss_comparison_plot.test[2],'+'}) 
-gnuplot.raw('set xtics '..xtics)
-gnuplot.figprint(save_dir..'loss_summary.pdf')
-gnuplot.closeall() 
+
+--results[1].train.loss = torch.rand(10) 
+--results[1].test.loss = torch.rand(10) 
+--results[2].train.loss = torch.rand(10) 
+--results[2].test.loss = torch.rand(10) 
+--
+----mean and standard dev of final losses 
+--loss_comparison_plot = {train=torch.Tensor(2,#results),test=torch.Tensor(2,#results)} 
+--xtics = '('
+--for i = 1,#results do 
+--    local tied_weights = '' 
+--    if configs[i].tied_weights == true then 
+--        tied_weights = 't' 
+--    elseif configs then 
+--        tied_weights = 'ut' 
+--    end
+--    nlayers = configs[i].nlayers or 0
+--    xtics = xtics..'"'..configs[i].name..nlayers..tied_weights..'" '..i..', '
+--    loss_comparison_plot.train[1][i] = results[i].train.loss:mean() 
+--    loss_comparison_plot.train[2][i] = results[i].train.loss:std()*0.5 
+--    loss_comparison_plot.test[1][i] = results[i].test.loss:mean() 
+--    loss_comparison_plot.test[2][i] = results[i].test.loss:std()*0.5 
+--end
+--xtics = xtics..')\''
+--gnuplot.plot({'Train Loss',torch.range(1,#results),loss_comparison_plot.train[1],'+-'},
+--             --{'Test Loss',torch.range(1,#results),loss_comparison_plot.test[1],'+-'},
+--             {torch.range(1,#results),loss_comparison_plot.train[1]+loss_comparison_plot.train[2],'+'},
+--             {torch.range(1,#results),loss_comparison_plot.train[1]-loss_comparison_plot.train[2],'+'}) 
+--             --{torch.range(1,#results),loss_comparison_plot.test[1]+loss_comparison_plot.test[2],'+'},
+--             --{torch.range(1,#results),loss_comparison_plot.test[1]-loss_comparison_plot.test[2],'+'}) 
+--gnuplot.raw('set xtics '..xtics)
+--gnuplot.figprint(save_dir..'loss_summary.pdf')
+--gnuplot.closeall() 
 
 
 

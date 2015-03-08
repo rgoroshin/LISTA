@@ -1,6 +1,7 @@
 plot_results = function(results,configs,save_dir) 
     --mean and standard dev of final losses 
     local loss_comparison_plot = {train=torch.zeros(2,#results),test=torch.zeros(2,#results)} 
+    local plot_labels = {}
     local xtics = '('
     for i = 1,#results do 
         local tied_weights = '' 
@@ -10,7 +11,9 @@ plot_results = function(results,configs,save_dir)
             tied_weights = 't' 
         end
         nlayers = configs[i].nlayers or configs[i].nloops or 0
-        xtics = xtics..'"'..configs[i].name..nlayers..tied_weights..'" '..i..', '
+        local label = configs[i].name..nlayers..tied_weights
+        plot_labels[i] = label 
+        xtics = xtics..'"'..label..'" '..i..', '
         loss_comparison_plot.train[1][i] = results[i].train.loss:mean() 
         loss_comparison_plot.test[1][i] = results[i].test.loss:mean() 
         local std_train = results[i].train.loss:std()*0.5 
@@ -30,9 +33,25 @@ plot_results = function(results,configs,save_dir)
     gnuplot.raw('set xtics font ", 3" '..xtics)
     gnuplot.figprint(save_dir..'loss_summary.pdf')
     gnuplot.closeall() 
-
-   -- local scatter_comparison_plot = {train=torch.zeros(2,#results),test=torch.zeros(2,#results)} 
-     
+    local scatter = torch.Tensor(2,#results) 
+    for i = 1,#results do 
+      local x = results[i].train.rec:mean()   
+      local y = results[i].train.sparsity:mean()   
+      scatter[1][i] = x 
+      scatter[2][i] = y
+      --gnuplot.plot(torch.Tensor(1):fill(x),torch.Tensor(1):fill(y))
+      --scatter_comparison_plot.test[1][i] = results[i].test.rec:mean()   
+      --scatter_comparison_plot.test[2][i] = results[i].test.sparsity:mean()   
+    end
+    gnuplot.plot(scatter[1],scatter[2],'.')
+    for i = 1,scatter:size(2) do 
+      local xs = tostring(scatter[1][i]) 
+      local ys = tostring(scatter[2][i]) 
+      gnuplot.raw('set label "'..plot_labels[i]..'" at '..xs..','..ys..' tc rgb "black" font ",4" front')
+    end
+    gnuplot.plotflush()
+    gnuplot.figprint(save_dir..'scatter_summary.pdf')
+    gnuplot.closeall() 
 end
 
 function serializeTable(val, name, skipnewlines, depth)
