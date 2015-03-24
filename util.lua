@@ -1,17 +1,18 @@
-plot_results = function(results,configs,save_dir) 
+plot_results = function(results,save_dir) 
     --mean and standard dev of final losses 
     local loss_comparison_plot = {train=torch.zeros(2,#results),test=torch.zeros(2,#results)} 
     local plot_labels = {}
     local xtics = '('
     for i = 1,#results do 
+        local config = results[i].config
         local tied_weights = '' 
-        if configs[i].untied_weights==true then 
+        if config.untied_weights==true then 
             tied_weights = 'ut' 
-        elseif configs[i].untied_weights==false then 
+        elseif config.untied_weights==false then 
             tied_weights = 't' 
         end
-        nlayers = configs[i].nlayers or configs[i].nloops or 0
-        local label = configs[i].name..nlayers..tied_weights
+        nlayers = config.nlayers or config.nloops or 0
+        local label = config.name..nlayers..tied_weights
         plot_labels[i] = label 
         xtics = xtics..'"'..label..'" '..i..', '
         loss_comparison_plot.train[1][i] = results[i].train.loss:mean() 

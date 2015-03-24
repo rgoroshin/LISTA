@@ -37,7 +37,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     local padding = (k-1)/2
     local ConvDec = decoder:get(2) 
     local encoder = nn.Sequential()
-    local ConvEnc = nn.SpatialConvolutionFFT(inplane,outplane,k,k) 
+    local ConvEnc = nn.SpatialConvolutionMM(inplane,outplane,k,k) 
     ConvEnc.weight:copy(flip(ConvDec.weight)) 
     ConvEnc.bias:fill(0)
     encoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
@@ -106,7 +106,7 @@ end
 construct_deep_net = function(nlayers,inplane,outplane,k,untied_weights,config)
 --deep ReLU network with [optionally] shared weights (inialized identically to LISTA) 
     print('Initilizing deep ReLU from LISTA init') 
-    local We = nn.SpatialConvolutionFFT(inplane,outplane,k,k) 
+    local We = nn.SpatialConvolutionMM(inplane,outplane,k,k) 
     local LISTA = construct_LISTA(We,1,config.l1w,config.L,config.untied_weights)
     local pad1 = LISTA.pad1
     local pad2 = LISTA.pad2
@@ -187,7 +187,7 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
         end
         Sw = I - Sw
         S:add(pad2:clone()) 
-        S:add(nn.SpatialConvolutionFFT(outplane,outplane,2*k-1,2*k-1))
+        S:add(nn.SpatialConvolutionMM(outplane,outplane,2*k-1,2*k-1))
         S:get(2).weight:copy(Sw) 
         S:get(2).bias:fill(0)
         S:cuda() 

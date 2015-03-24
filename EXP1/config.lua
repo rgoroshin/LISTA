@@ -4,39 +4,44 @@
 --3-Untied weight LISTA (0-5 loops)
 --4-Deep relu networks with and without tied weights (0-5 layers)
 --==options==
-cutorch.setDevice(1)
-torch.setnumthreads(8)
-math.randomseed(123)
-cutorch.manualSeed(123) 
-torch.manualSeed(123)
-exp_name = 'EXP1' 
-save_dir = './Results/Experiments/'..exp_name..'/' 
+EXP = {}
+EXP.config_dir = './Experiments/config/'
+EXP.exp_name = {'EXP1'}
+EXP.small_exp = {false}
+--dataset 
+EXP.dataset = {'CIFAR_CN'}
 --loss 
-l1w = 0.5 
+EXP.l1w = {0.5} 
 --training batch size  
-bsz = 16
+EXP.bsz = {16} 
 --learning rate 
-learn_rate = nil 
+EXP.learn_rate = {nil} 
 --learning rate hyper-optimization 
-resolution = 10
-depth = 2
+EXP.resolution = {10}
+EXP.depth = {2}
+EXP.rand_grid = {true} 
 --epochs 
-train_epochs = 30 
+EXP.epochs = {30}  
 --repeat experiments 
-repeat_exp = 5 
+EXP.repeat_exp = {10}  
 --configs 
 configs = {} 
-configs[1] = {name='FISTA',repeat_exp=1,niter=500,l1w=l1w} 
+configs[1] = {name='FISTA',repeat_exp=1,niter=1000,l1w=l1w} 
 ----LISTA with untied weights 
-configs[2]  = {name='LISTA',nloops=0,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[3]  = {name='LISTA',nloops=1,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[4]  = {name='LISTA',nloops=3,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[5]  = {name='LISTA',nloops=0,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[6]  = {name='LISTA',nloops=1,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[7]  = {name='LISTA',nloops=3,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[8]  = {name='ReLU',nlayers=0,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[9]  = {name='ReLU',nlayers=1,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[10] = {name='ReLU',nlayers=3,untied_weights=false,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[11] = {name='ReLU',nlayers=0,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[12] = {name='ReLU',nlayers=1,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
-configs[13] = {name='ReLU',nlayers=3,untied_weights=true,fix_decoder=true,l1w=l1w,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir,repeat_exp=repeat_exp} 
+configs[2]  = {name='LISTA',nloops=0,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[3]  = {name='LISTA',nloops=1,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[4]  = {name='LISTA',nloops=3,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[5]  = {name='LISTA',nloops=5,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[6]  = {name='LISTA',nloops=0,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[7]  = {name='LISTA',nloops=1,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[8]  = {name='LISTA',nloops=3,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[9]  = {name='LISTA',nloops=5,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[10] = {name='ReLU',nlayers=0,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[11] = {name='ReLU',nlayers=1,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[12] = {name='ReLU',nlayers=3,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[13] = {name='ReLU',nlayers=5,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[14] = {name='ReLU',nlayers=0,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[15] = {name='ReLU',nlayers=1,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[16] = {name='ReLU',nlayers=3,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[17] = {name='ReLU',nlayers=5,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir}
+EXP.configs = configs 

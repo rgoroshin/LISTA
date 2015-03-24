@@ -10,117 +10,182 @@
 --1-Lasso loss 
 --2-Sparisity, reconstruction error
 --=+=+=+=+=++=+=+=+=+=+=+=+=+=+=+=+=+=+=
-dofile('init.lua') 
-dofile('EXP1/config.lua') 
+torch.setnumthreads(4)
+math.randomseed(123)
+cutorch.manualSeed(123) 
+torch.manualSeed(123)
+--==****interactive mode****==
+interactive=false 
+gpu_id = 1 
+--============================
+if interactive == false then 
+        disp_results = 10
+        cutorch.setDevice(tonumber(arg[1]))
+        config_list_dir = './Experiments/config/'
+        done_dir = './Experiments/done/'
+    elseif interactive == true then  
+        cutorch.setDevice(gpu_id)
+        config_list_dir = './Experiments/interactive/'
+        done_dir = './Experiments/interactive/' 
+    else error('Unspecified run mode')
+end 
 
-os.execute('mkdir -p '..save_dir)  
-os.execute('cp ./'..exp_name..'/config.lua '..save_dir)
-record_file = io.open(save_dir..'output.txt', 'w') 
-record_file:close()
+while #ls_in_dir(config_list_dir, 'ls ') > 0 do 
+    
+    config_files = ls_in_dir(config_list_dir, 'ls ')     
+    exp_config = nil 
+    
+    while exp_config == nil and #config_files > 0 do  
+        --to minimize the chance of race condition 
+        --with another worker, choose a random experiment
+        config_file = config_list_dir..config_files[math.random(#config_files)] 
+        if config_file ~= nil then
+            os.execute('mv '..config_file..' '..done_dir)   
+            exp_config = loadfile(done_dir..paths.basename(config_file)) 
+        end 
+        config_files = ls_in_dir(config_list_dir, 'ls ')    
+    end
+    
+    --load the config 
+    print(config_file) 
+    exp_config() 
+    save_dir = './Results/Experiments/'..exp_name..'/'
+    os.execute('mkdir -p '..save_dir)  
+    os.execute('mkdir -p '..save_dir..'Code/') 
+    os.execute('cp *.lua '..save_dir..'Code/')
+    os.execute('cp '..done_dir..paths.basename(config_file)..' '..save_dir) 
+    record_file = io.open(save_dir..'output.txt', 'w') 
+    record_file:close()
 
---load the data 
-if train_data == nil then 
-    train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
-    train_data = train_data.datacn:resize(50000,3,32,32) 
-end
-if test_data == nil then 
-    test_data = torch.load('./Data/CIFAR/CIFAR_CN_test.t7')
-    test_data = test_data.datacn:resize(10000,3,32,32) 
-end
-
---data sources 
-ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
-ds_train = DataSource({dataset = train_data, batchSize = bsz})
-ds_test = DataSource({dataset = test_data, batchSize = bsz})
-
---load a pre-trained decoder (trained on CIFAR-training set, l1w =?, using FISTA) 
-decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7') 
---find max eigen value 
-L = decoder.L or 1.05*findMaxEigenValue(decoder)
-
-get_codes = function(config,decoder,ds_train,ds_test) 
-    local Ztrain,Ztest,loss_plot 
-    if config.name == 'FISTA' then 
-        print('FISTA interence...')
-        Ztrain = ConvFISTA(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
-        Ztest = ConvFISTA(decoder,ds_test.data[1],config.niter,config.l1w,config.L) 
-    elseif config.name == 'LISTA' then 
-        local inplane = decoder:get(2).weight:size(1)
-        local outplane = decoder:get(2).weight:size(2) 
-        local k = decoder:get(2).kW
-        local We = nn.SpatialConvolutionFFT(inplane,outplane,k,k,stride,stride) 
-        We.weight:copy(flip(decoder:get(2).weight)) 
-        We.bias:fill(0)
-        local encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
-        if config.learn_rate == nil then 
-            config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
-            local record_file = io.open(save_dir..'output.txt', 'a') 
-            record_file:write('found learn_rate = '..config.learn_rate..'\n') 
-            record_file:close()
+    --load the data 
+    if dataset == 'CIFAR_CN' then 
+        if train_data == nil then 
+            train_data = torch.load('./Data/CIFAR/CIFAR_CN_train.t7')
+            train_data = train_data.datacn:resize(50000,3,32,32) 
+            if small_exp == true then 
+                train_data.datacn = train_data.datacn:narrow(1,1,1000) 
+            end
         end
-        --training
-        print('Training LISTA via lasso..')
-        encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
-        Ztrain = transform_data(ds_train.data[1],encoder)
-        Ztest = transform_data(ds_test.data[1],encoder)
-    elseif config.name == 'ReLU' then 
-        local inplane = decoder:get(2).weight:size(1)
-        local outplane = decoder:get(2).weight:size(2) 
-        local k = decoder:get(2).kW
-        local encoder = construct_deep_net(config.nlayers,inplane,outplane,k,config.untied_weights,config)
-        if config.learn_rate == nil then 
-            config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
-            local record_file = io.open(save_dir..'output.txt', 'a') 
-            record_file:write('found learn_rate = '..config.learn_rate..'\n') 
-            record_file:close()
+        if test_data == nil then 
+            test_data = torch.load('./Data/CIFAR/CIFAR_CN_test.t7')
+            test_data = test_data.datacn:resize(10000,3,32,32) 
         end
-        --training
-        print('Training ReLU network via lasso..')
-        encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
-        Ztrain = transform_data(ds_train.data[1],encoder)
-        Ztest = transform_data(ds_test.data[1],encoder)
     else 
-        error('Unsuported encoding config') 
+        error('unknown dataset!') 
     end 
-    return Ztrain,Ztest,loss_plot  
-end
-
-results = {} 
-plots = {} 
-for i=1,#configs do 
-    configs[i].L = L
-    rpt = torch.Tensor(configs[i].repeat_exp) 
-    results[i]={config=configs[i].name, 
-                train={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()},
-                test ={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()}}
-    plots[i]={} 
-    for j=1,configs[i].repeat_exp do 
+    
+    --data sources 
+    ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
+    ds_train = DataSource({dataset = train_data, batchSize = bsz})
+    ds_test = DataSource({dataset = test_data, batchSize = bsz})
+    
+    --load a pre-trained decoder (trained on CIFAR-training set, l1w =?, using FISTA) 
+    Wd = torch.load('./Results/Trained_Networks/FISTA_Wd_32x3x9x9.t7')
+    decoder = nn.SpatialConvolutionMM(3,32,9,9)
+    decoder.bias:fill(0) 
+    decoder.weight:copy(Wd) 
+    --find max eigen value 
+    L = 600 or 1.05*findMaxEigenValue(decoder)
+    
+    get_codes = function(config,decoder,ds_train,ds_test) 
+        local Ztrain,Ztest,loss_plot 
+        if config.name == 'FISTA' then 
+            print('FISTA interence...')
+            Ztrain = ConvFISTA(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
+            Ztest = ConvFISTA(decoder,ds_test.data[1],config.niter,config.l1w,config.L) 
+        elseif config.name == 'LISTA' then 
+            local inplane = decoder:get(2).weight:size(1)
+            local outplane = decoder:get(2).weight:size(2) 
+            local k = decoder:get(2).kW
+            local We = nn.SpatialConvolutionMM(inplane,outplane,k,k,stride,stride) 
+            We.weight:copy(flip(decoder:get(2).weight)) 
+            We.bias:fill(0)
+            local encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+            if config.learn_rate == nil then 
+                config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
+                local record_file = io.open(save_dir..'output.txt', 'a') 
+                record_file:write('found learn_rate = '..config.learn_rate..'\n') 
+                record_file:close()
+            end
+            --training
+            print('Training LISTA via lasso..')
+            encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+            Ztrain = transform_data(ds_train.data[1],encoder)
+            Ztest = transform_data(ds_test.data[1],encoder)
+        elseif config.name == 'ReLU' then 
+            local inplane = decoder:get(2).weight:size(1)
+            local outplane = decoder:get(2).weight:size(2) 
+            local k = decoder:get(2).kW
+            local encoder = construct_deep_net(config.nlayers,inplane,outplane,k,config.untied_weights,config)
+            if config.learn_rate == nil then 
+                config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
+                local record_file = io.open(save_dir..'output.txt', 'a') 
+                record_file:write('found learn_rate = '..config.learn_rate..'\n') 
+                record_file:close()
+            end
+            --training
+            print('Training ReLU network via lasso..')
+            encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+            Ztrain = transform_data(ds_train.data[1],encoder)
+            Ztest = transform_data(ds_test.data[1],encoder)
+        else 
+            error('Unsuported encoding config') 
+        end 
+        return Ztrain,Ztest,loss_plot  
+    end
+    
+    results = {} 
+    arch.L = L
+    rpt = torch.Tensor(repeat_exp) 
+    results={config=arch, 
+             train={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()},
+             test ={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()}}
+    
+    repeat_loss_plot={}  
+    for j=1,repeat_exp do 
         local record_file = io.open(save_dir..'output.txt', 'a') 
-        record_file:write('========Config '..i..' Repeat '..j..' ========\n') 
-        record_file:write(serializeTable(configs[i])..'\n') 
+        record_file:write('======== Repeat '..j..' ========\n') 
         record_file:close()
-        Ztrain,Ztest,loss_plot = get_codes(configs[i],decoder,ds_train,ds_test)
-        eval_test = eval_sparse_code(ds_test.data[1],Ztest,decoder,configs[i].l1w)
-        eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,configs[i].l1w)
+        Ztrain,Ztest,loss_plot = get_codes(arch,decoder,ds_train,ds_test)
+        eval_test = eval_sparse_code(ds_test.data[1],Ztest,decoder,l1w)
+        eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,l1w)
         output = '\nEval Train\n'..serializeTable(eval_train)..'\n' 
         output = output..'Eval Test\n'..serializeTable(eval_test)..'\n' 
         local record_file = io.open(save_dir..'output.txt', 'a') 
         record_file:write(output..'\n') 
         record_file:close()
-        results[i].train.loss[j] = eval_train.average_loss 
-        results[i].train.rec[j] = eval_train.average_relative_rec_error  
-        results[i].train.sparsity[j] = eval_train.average_sparsity 
-        results[i].test.loss[j] = eval_test.average_loss 
-        results[i].test.rec[j] = eval_test.average_relative_rec_error  
-        results[i].test.sparsity[j] = eval_test.average_sparsity 
-        if type(configs[i].epochs) == 'number' then 
-            plots[i][j] = {i..'-'..configs[i].name,torch.range(1,configs[i].epochs),loss_plot,'+'}
-        end
-        torch.save(save_dir..'loss_plot.t7',plots) 
-        torch.save(save_dir..'results.t7',results) 
+        results.train.loss[j] = eval_train.average_loss 
+        results.train.rec[j] = eval_train.average_relative_rec_error  
+        results.train.sparsity[j] = eval_train.average_sparsity 
+        results.test.loss[j] = eval_test.average_loss 
+        results.test.rec[j] = eval_test.average_relative_rec_error  
+        results.test.sparsity[j] = eval_test.average_sparsity 
+        --[[TODO: debug loss_plot = torch.rand(epochs)--]]
+        repeat_loss_plot[j] = {arch.name,torch.range(1,epochs),loss_plot,'+'}
     end 
-    plot_results(results,configs,save_dir) 
+    --save in shared file  
+    if type(arch.name) ~= 'FISTA' then 
+        plot_path = paths.dirname(save_dir)..'/loss_plot.t7'
+        if paths.filep(plot_path) == true then
+            exp_plots = torch.load(plot_path)
+        else 
+            exp_plots = {} 
+        end 
+        n = #exp_plots+1
+        exp_plots[n]=repeat_loss_plot
+        torch.save(paths.dirname(save_dir)..'/loss_plot.t7',exp_plots) 
+    end
+    results_path = paths.dirname(save_dir)..'/results.t7'
+    if paths.filep(results_path) == true then
+        exp_results = torch.load(results_path) 
+        n = #exp_results+1
+        exp_results[n]=results
+    else 
+        exp_results={} 
+    end 
+    torch.save(paths.dirname(save_dir)..'/results.t7',results) 
+    plot_results(exp_results,paths.dirname(save_dir)..'/') 
 end
-
+--all configs done! 
 
 
