@@ -37,7 +37,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     local padding = (k-1)/2
     local ConvDec = decoder:get(2) 
     local encoder = nn.Sequential()
-    local ConvEnc = nn.SpatialConvolutionMM(inplane,outplane,k,k) 
+    local ConvEnc = nn.SpatialConvolution(inplane,outplane,k,k) 
     ConvEnc.weight:copy(flip(ConvDec.weight)) 
     ConvEnc.bias:fill(0)
     encoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
@@ -58,7 +58,8 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
         for i = 1,niter do 
             --ISTA
             Xerr = decoder:forward(Y):add(-1,X)  
-            dZ = encoder:forward(Xerr)  
+            --dZ = encoder:forward(Xerr)  
+            dZ = decoder:backward(Xerr)  
             Z:copy(Y:add(-1/L,dZ))  
             Z:add(-l1w/L) 
             Z:copy(threshold(Z))
@@ -70,6 +71,11 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
             Y:copy(Ynext)
             Zprev:copy(Z)
             t = tnext
+            if math.fmod(i,niter/2)==0 then 
+                --loss 
+                local loss = 0.5*Xerr:pow(2):mean()+l1w*Y:abs():mean()
+                print(loss); 
+            end
         end
         return Y 
     end
@@ -106,7 +112,7 @@ end
 construct_deep_net = function(nlayers,inplane,outplane,k,untied_weights,config)
 --deep ReLU network with [optionally] shared weights (inialized identically to LISTA) 
     print('Initilizing deep ReLU from LISTA init') 
-    local We = nn.SpatialConvolutionMM(inplane,outplane,k,k) 
+    local We = nn.SpatialConvolution(inplane,outplane,k,k) 
     local LISTA = construct_LISTA(We,1,config.l1w,config.L,config.untied_weights)
     local pad1 = LISTA.pad1
     local pad2 = LISTA.pad2
@@ -187,7 +193,7 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
         end
         Sw = I - Sw
         S:add(pad2:clone()) 
-        S:add(nn.SpatialConvolutionMM(outplane,outplane,2*k-1,2*k-1))
+        S:add(nn.SpatialConvolution(outplane,outplane,2*k-1,2*k-1))
         S:get(2).weight:copy(Sw) 
         S:get(2).bias:fill(0)
         S:cuda() 
@@ -267,7 +273,7 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     return net
 end 
 
---(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D)  
+--(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D if [fix_decoder]==false)  
 minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epochs,save_dir)
     if save_dir ~= nil then  
         local record_file = io.open(save_dir..'output.txt', 'a') 
@@ -292,7 +298,7 @@ minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epoc
         sys.tic() 
         for i = 1, ds:size() do 
            progress(i,ds:size()) 
-           local X = ds:next() 
+           local X = ds:next()
            local Xr = net:forward(X)
            local rec_error = criterion:forward(Xr,X)   
            local Y = net:get(1).output 
