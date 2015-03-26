@@ -36,13 +36,80 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     local k = decoder:get(2).kW
     local padding = (k-1)/2
     local ConvDec = decoder:get(2) 
-    local encoder = nn.Sequential()
-    local ConvEnc = nn.SpatialConvolution(inplane,outplane,k,k) 
-    ConvEnc.weight:copy(flip(ConvDec.weight)) 
-    ConvEnc.bias:fill(0)
-    encoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
-    encoder:add(ConvEnc) 
-    encoder:cuda() 
+    --Thresholding-operator 
+    local threshold = nn.Threshold(0,0):cuda()  
+    local X = torch.CudaTensor(n,data:size(2),data:size(3),data:size(4))
+    local Zprev = torch.zeros(n,outplane,data:size(3),data:size(4)):cuda()
+    local Z = Zprev:clone() 
+    local Y = Zprev:clone() 
+    local Ynext = Zprev:clone() 
+    local infer = function(X)  
+    --FISTA inference iterates
+        local t = 1
+        Zprev:fill(0)
+        Y:fill(0)
+        for i = 1,niter do 
+            --ISTA
+            Xerr = decoder:forward(Y):add(-1,X)  
+            dZ = decoder:backward(Y,Xerr)  
+            Z:copy(Y:add(-1/L,dZ))  
+            Z:add(-l1w/L) 
+            Z:copy(threshold(Z))
+            ----FISTA 
+            local tnext = (1 + math.sqrt(1+4*math.pow(t,2)))/2 
+            Ynext:copy(Z)
+            Ynext:add((1-t)/tnext,Zprev:add(-1,Z))
+            --copies for next iter 
+            Y:copy(Ynext)
+            Zprev:copy(Z)
+            t = tnext
+            if math.fmod(i,10)==0 then 
+                --loss 
+                local loss = 0.5*Xerr:pow(2):mean()+l1w*Z:abs():mean()
+                print(loss); 
+            end
+        end
+        return Y 
+    end
+    --infer codes for entire dataset 
+    for i = 0,data:size(1)-n,n do 
+        progress(i,data:size(1))
+        X:copy(data:narrow(1,i+1,n))
+        Y = infer(X) 
+        codes:narrow(1,i+1,n):copy(Y) 
+    end
+    --process the remaining data 
+    local a = math.floor(data:size(1)/n)*n+1
+    local b = math.fmod(data:size(1),n)
+    if a < data:size(1) then 
+        X = torch.CudaTensor(b,X:size(2),X:size(3),X:size(4))
+        Zprev = torch.zeros(b,outplane,X:size(3),X:size(4)):cuda()
+        Z = Zprev:clone() 
+        Y = Zprev:clone() 
+        Ynext = Zprev:clone() 
+        X:copy(data:narrow(1,a,b))
+        Y = infer(X)
+        codes:narrow(1,a,b):copy(Y)  
+    end 
+    --clean up  
+    X = nil 
+    Zprev = nil 
+    Z = nil 
+    Ynext = nil 
+    Y = nil 
+    collectgarbage() 
+    return codes
+end
+ConvISTA = function(decoder,data,niter,l1w,L)
+    --infer sparse code of dataset [ds] in dictionary [decoder] 
+    local L = L or 1.05*findMaxEigenValue(decoder) 
+    local n = 256 
+    local inplane = decoder:get(2).weight:size(1)
+    local outplane = decoder:get(2).weight:size(2) 
+    local codes = torch.Tensor(data:size(1),outplane,data:size(3),data:size(4))
+    local k = decoder:get(2).kW
+    local padding = (k-1)/2
+    local ConvDec = decoder:get(2) 
     --Thresholding-operator 
     local threshold = nn.Threshold(0,0):cuda()  
     local X = torch.CudaTensor(n,data:size(2),data:size(3),data:size(4))
@@ -57,27 +124,31 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
         Y:fill(0)
         for i = 1,niter do 
             --ISTA
-            Xerr = decoder:forward(Y):add(-1,X)  
-            --dZ = encoder:forward(Xerr)  
-            dZ = decoder:backward(Xerr)  
-            Z:copy(Y:add(-1/L,dZ))  
+            --Xerr = decoder:forward(Y):add(-1,X)  
+            Xerr = decoder:forward(Zprev):add(-1,X)  
+            --dZ = decoder:backward(Y,Xerr)  
+            dZ = decoder:backward(Zprev,Xerr)  
+            --Z:copy(Y:add(-1/L,dZ))  
+            Z:copy(Zprev:add(-1/L,dZ))  
             Z:add(-l1w/L) 
             Z:copy(threshold(Z))
-            --FISTA 
-            local tnext = (1 + math.sqrt(1+4*math.pow(t,2)))/2 
-            Ynext:copy(Z)
-            Ynext:add((1-t)/tnext,Zprev:add(-1,Z))
-            --copies for next iter 
-            Y:copy(Ynext)
-            Zprev:copy(Z)
-            t = tnext
-            if math.fmod(i,niter/2)==0 then 
+            Zprev:copy(Z) 
+            ----FISTA 
+            --local tnext = (1 + math.sqrt(1+4*math.pow(t,2)))/2 
+            --Ynext:copy(Z)
+            --Ynext:add((1-t)/tnext,Zprev:add(-1,Z))
+            ----copies for next iter 
+            --Y:copy(Ynext)
+            --Zprev:copy(Z)
+            --t = tnext
+            if math.fmod(i,niter/100)==0 then 
                 --loss 
-                local loss = 0.5*Xerr:pow(2):mean()+l1w*Y:abs():mean()
+                local loss = 0.5*Xerr:pow(2):mean()+l1w*Z:abs():mean()
                 print(loss); 
             end
         end
-        return Y 
+        --return Y 
+        return Z 
     end
     --infer codes for entire dataset 
     for i = 0,data:size(1)-n,n do 

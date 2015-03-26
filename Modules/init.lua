@@ -7,6 +7,6 @@ end
 if nn.NormLinear == nil then 
     dofile('./Modules/NormLinear.lua') 
 end 
-if nn.NormSpatialConvolutionMM == nil then 
-    dofile('./Modules/NormSpatialConvolutionMM.lua') 
+if nn.NormSpatialConvolution == nil then 
+    dofile('./Modules/NormSpatialConvolution.lua') 
 end 
