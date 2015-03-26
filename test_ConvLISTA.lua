@@ -196,70 +196,107 @@ k = 5
 stride = 1
 padding = (k-1)/2
 --1/(code learning rate)  
-nloops = 20 
 L = 600
 --dictionary learning rate 
 l1w = 0.5
+--a sample 
+X = ds_train:next() 
 
-for nloops = 1,20 do 
---=====initialize componenets=====  
---decoder 
-decoder = nn.Sequential() 
-ConvDec = nn.NormSpatialConvolution(outplane, inplane, k, k, stride, stride) 
-ConvDec.bias:fill(0) 
-decoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
-decoder:add(ConvDec) 
-decoder:cuda() 
---encoder
-encoder = nn.Sequential() 
-ConvEnc = nn.SpatialConvolution(inplane, outplane, k, k, stride, stride) 
-ConvEnc.weight:copy(flip(ConvDec.weight)) 
-ConvEnc.bias:fill(0)
-encoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
-encoder:add(ConvEnc) 
-encoder:cuda() 
---LISTA 
-LISTA = construct_LISTA(ConvEnc:clone():float(),nloops,l1w,L)
---Thresholding-operator 
-threshold = nn.Threshold(0,0):cuda()  
---Initial code 
-Zprev = torch.zeros(bsz,outplane,32,32):cuda()
-Z = Zprev:clone() 
---Reconstruction Criterion 
-criterion = nn.MSECriterion():cuda() 
-
---X = ds_train:next() 
-
--- ISTA inference 
-for i = 0,nloops do 
-    Xerr = decoder:forward(Zprev):add(-1,X)  
-    dZ = decoder:backward(Zprev,Xerr)  
-    Zprev:add(-1/L,dZ) 
-    Z:copy(Zprev) 
-    Z:add(-l1w/L) 
-    Z:copy(threshold(Z))
-    Zprev:copy(Z) 
+for nloops = 1,5 do 
+    --=====initialize componenets=====  
+    --decoder 
+    decoder = nn.Sequential() 
+    ConvDec = nn.NormSpatialConvolution(outplane, inplane, k, k, stride, stride) 
+    ConvDec.bias:fill(0) 
+    decoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
+    decoder:add(ConvDec) 
+    decoder:cuda() 
+    --encoder
+    encoder = nn.Sequential() 
+    ConvEnc = nn.SpatialConvolution(inplane, outplane, k, k, stride, stride) 
+    ConvEnc.weight:copy(flip(ConvDec.weight)) 
+    ConvEnc.bias:fill(0)
+    encoder:add(nn.SpatialPadding(padding,padding,padding,padding,3,4))
+    encoder:add(ConvEnc) 
+    encoder:cuda() 
+    --LISTA 
+    LISTA = construct_LISTA(ConvEnc:clone():float(),nloops,l1w,L)
+    --Thresholding-operator 
+    threshold = nn.Threshold(0,0):cuda()  
+    --Initial code 
+    Zprev = torch.zeros(bsz,outplane,32,32):cuda()
+    Z = Zprev:clone() 
+    --Reconstruction Criterion 
+    criterion = nn.MSECriterion():cuda() 
+    
+    -- ISTA inference 
+    for i = 0,nloops do 
+        Xerr = decoder:forward(Zprev):add(-1,X)  
+        dZ = decoder:backward(Zprev,Xerr)  
+        Zprev:add(-1/L,dZ) 
+        Z:copy(Zprev) 
+        Z:add(-l1w/L) 
+        Z:copy(threshold(Z))
+        Zprev:copy(Z) 
+    end
+    
+    Xr = decoder:forward(Z)
+    rec_error = criterion:forward(Xr,X) 
+    sample_loss = 0.5*rec_error + l1w*Z:abs():mean() 
+    print('==========nloops = '..nloops..'==========')
+    print(tostring(nloops)..'-iter-ISTA Loss  '..tostring(sample_loss))
+    
+    net = nn.Sequential() 
+    net.cost_table = {} 
+    net.cost_table.L1 = {} 
+    net:add(LISTA)
+    net:add(nn.ModuleL1Penalty(true,l1w,true)) 
+    net:add(decoder:clone()) 
+    net:cuda()
+    
+    Xr2 = net:forward(X)
+    rec_error2 = criterion:forward(Xr2,X) 
+    Z2 = LISTA.output:float() 
+    sample_loss2 = 0.5*rec_error2 + net:get(2).L1Cost[1] 
+    print(tostring(nloops)..'-loop-LISTA Loss '..tostring(sample_loss2))
 end
+print('==========Test 3==========')
+--compare loss obtainted with FISTA 
+--iterations and trained LISTA networks 
+--this uses the newly training written 
+--code for the LISTA project  
 
-Xr = decoder:forward(Z)
-rec_error = criterion:forward(Xr,X) 
-sample_loss = 0.5*rec_error + l1w*Z:abs():mean() 
-print(tostring(nloops)..'-iter-ISTA Loss  '..tostring(sample_loss))
-
-net = nn.Sequential() 
-net.cost_table = {} 
-net.cost_table.L1 = {} 
-net:add(LISTA)
-net:add(nn.ModuleL1Penalty(true,l1w,true)) 
-net:add(decoder:clone()) 
-net:cuda()
-
-Xr2 = net:forward(X)
-rec_error2 = criterion:forward(Xr2,X) 
-Z2 = LISTA.output:float() 
-sample_loss2 = 0.5*rec_error2 + net:get(2).L1Cost[1] 
-print(tostring(nloops)..'-loop-LISTA Loss '..tostring(sample_loss2))
-end
+--(1) load a pretrained decoder 
+decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7')
+decoder:cuda()
+--(2) set params 
+l1w=0.5 
+L=600
+niter=100
+nloops=1
+learn_rate=0.5e-6 
+epochs=20
+data_small = data:narrow(1,1,1000) 
+--(3) run FISTA inference & eval codes 
+if eval_fista == nil then 
+    Zfista = ConvFISTA(decoder,data_small,niter,l1w,L)
+    eval_fista = eval_sparse_code(data_small,Zfista,decoder,l1w)
+end 
+print(eval_fista) 
+--(4) 
+inplane = decoder:get(2).weight:size(1)
+outplane = decoder:get(2).weight:size(2) 
+k = decoder:get(2).kW
+We = nn.SpatialConvolution(inplane,outplane,k,k,stride,stride) 
+We.weight:copy(flip(decoder:get(2).weight)) 
+We.bias:fill(0)
+encoder = construct_LISTA(We,nloops,l1w,L,false)
+ds = DataSource({dataset=data_small,batchSize=16})
+print('training LISTA..') 
+encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,true,ds,l1w,learn_rate,epochs,nil)
+Zlista = transform_data(data_small,encoder)
+eval_lista = eval_sparse_code(data_small,Zlista,decoder,l1w)
+print(eval_lista) 
 --[[
 --==============================
 print('==========Test 3==========')

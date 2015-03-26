@@ -51,7 +51,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
         for i = 1,niter do 
             --ISTA
             Xerr = decoder:forward(Y):add(-1,X)  
-            dZ = decoder:backward(Y,Xerr)  
+            dZ = decoder:backward(Y,Xerr)   
             Z:copy(Y:add(-1/L,dZ))  
             Z:add(-l1w/L) 
             Z:copy(threshold(Z))
@@ -63,11 +63,11 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
             Y:copy(Ynext)
             Zprev:copy(Z)
             t = tnext
-            if math.fmod(i,10)==0 then 
-                --loss 
-                local loss = 0.5*Xerr:pow(2):mean()+l1w*Z:abs():mean()
-                print(loss); 
-            end
+            --if math.fmod(i,10)==0 then 
+            --    --loss 
+            --    local loss = 0.5*Xerr:pow(2):mean()+l1w*Z:abs():mean()
+            --    print(loss); 
+            --end
         end
         return Y 
     end
@@ -100,84 +100,69 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     collectgarbage() 
     return codes
 end
-ConvISTA = function(decoder,data,niter,l1w,L)
-    --infer sparse code of dataset [ds] in dictionary [decoder] 
-    local L = L or 1.05*findMaxEigenValue(decoder) 
-    local n = 256 
+
+--(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D if [fix_decoder]==false)  
+minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epochs,save_dir)
+    local sizeAverage = false
+    if save_dir ~= nil then  
+        local record_file = io.open(save_dir..'output.txt', 'a') 
+        record_file:write('Training Output:\n') 
+        record_file:close()
+    end
     local inplane = decoder:get(2).weight:size(1)
     local outplane = decoder:get(2).weight:size(2) 
-    local codes = torch.Tensor(data:size(1),outplane,data:size(3),data:size(4))
-    local k = decoder:get(2).kW
-    local padding = (k-1)/2
-    local ConvDec = decoder:get(2) 
-    --Thresholding-operator 
-    local threshold = nn.Threshold(0,0):cuda()  
-    local X = torch.CudaTensor(n,data:size(2),data:size(3),data:size(4))
-    local Zprev = torch.zeros(n,outplane,data:size(3),data:size(4)):cuda()
-    local Z = Zprev:clone() 
-    local Y = Zprev:clone() 
-    local Ynext = Zprev:clone() 
-    local infer = function(X) 
-        --FISTA inference iterates
-        local t = 1
-        Zprev:fill(0)
-        Y:fill(0)
-        for i = 1,niter do 
-            --ISTA
-            --Xerr = decoder:forward(Y):add(-1,X)  
-            Xerr = decoder:forward(Zprev):add(-1,X)  
-            --dZ = decoder:backward(Y,Xerr)  
-            dZ = decoder:backward(Zprev,Xerr)  
-            --Z:copy(Y:add(-1/L,dZ))  
-            Z:copy(Zprev:add(-1/L,dZ))  
-            Z:add(-l1w/L) 
-            Z:copy(threshold(Z))
-            Zprev:copy(Z) 
-            ----FISTA 
-            --local tnext = (1 + math.sqrt(1+4*math.pow(t,2)))/2 
-            --Ynext:copy(Z)
-            --Ynext:add((1-t)/tnext,Zprev:add(-1,Z))
-            ----copies for next iter 
-            --Y:copy(Ynext)
-            --Zprev:copy(Z)
-            --t = tnext
-            if math.fmod(i,niter/100)==0 then 
-                --loss 
-                local loss = 0.5*Xerr:pow(2):mean()+l1w*Z:abs():mean()
-                print(loss); 
-            end
+    
+    local net = nn.Sequential() 
+    net:add(encoder) 
+    net:add(nn.ModuleL1Penalty(true,l1w,sizeAverage)) 
+    net:add(decoder) 
+    net:cuda() 
+    local criterion = nn.MSECriterion():cuda()
+    criterion.sizeAverage = sizeAverage 
+    local loss_plot = torch.zeros(epochs)
+    
+    for iter = 1,epochs do 
+        local epoch_loss = 0 
+        local epoch_sparsity = 0 
+        local epoch_rec_error = 0 
+        sys.tic() 
+        for i = 1, ds:size() do 
+           progress(i,ds:size()) 
+           local X = ds:next()
+           local Xr = net:forward(X)
+           local rec_error = criterion:forward(Xr,X)   
+           local Y = net:get(1).output 
+           net:zeroGradParameters()
+           local rec_grad = criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
+           net:backward(X,rec_grad)
+           --fixed decoder 
+           if fix_decoder == true then 
+            net:get(3):get(2).gradWeight:fill(0) 
+            net:get(3):get(2).gradBias:fill(0)
+           end
+           --training a decoder 
+           net:updateParameters(learn_rate) 
+           --track loss 
+           local sample_rec_error = Xr:clone():add(-1,X):pow(2):mean()/X:clone():pow(2):mean()
+           local sample_sparsity = 1-(Y:float():gt(0):sum()/Y:nElement())
+           local sample_loss = 0.5*rec_error + l1w*Y:norm(1)/(bsz*outplane*32*32)  
+           epoch_rec_error = epoch_rec_error + sample_rec_error
+           epoch_sparsity = epoch_sparsity + sample_sparsity 
+           epoch_loss = epoch_loss + sample_loss 
         end
-        --return Y 
-        return Z 
-    end
-    --infer codes for entire dataset 
-    for i = 0,data:size(1)-n,n do 
-        progress(i,data:size(1))
-        X:copy(data:narrow(1,i+1,n))
-        Y = infer(X) 
-        codes:narrow(1,i+1,n):copy(Y) 
-    end
-    --process the remaining data 
-    local a = math.floor(data:size(1)/n)*n+1
-    local b = math.fmod(data:size(1),n)
-    if a < data:size(1) then 
-        X = torch.CudaTensor(b,X:size(2),X:size(3),X:size(4))
-        Zprev = torch.zeros(b,outplane,X:size(3),X:size(4)):cuda()
-        Z = Zprev:clone() 
-        Y = Zprev:clone() 
-        Ynext = Zprev:clone() 
-        X:copy(data:narrow(1,a,b))
-        Y = infer(X)
-        codes:narrow(1,a,b):copy(Y)  
+        local epoch_rec_error = epoch_rec_error/ds:size() 
+        local average_loss = epoch_loss/ds:size()  
+        loss_plot[iter] = average_loss
+        local average_sparsity = epoch_sparsity/ds:size() 
+        local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
+        print(output) 
+        if save_dir ~= nil then  
+            local record_file = io.open(save_dir..'output.txt', 'a') 
+            record_file:write(output..'\n') 
+            record_file:close()
+        end
     end 
-    --clean up  
-    X = nil 
-    Zprev = nil 
-    Z = nil 
-    Ynext = nil 
-    Y = nil 
-    collectgarbage() 
-    return codes
+    return encoder,loss_plot 
 end
 
 construct_deep_net = function(nlayers,inplane,outplane,k,untied_weights,config)
@@ -343,68 +328,6 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     net.pad2 = S:get(1) 
     return net
 end 
-
---(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D if [fix_decoder]==false)  
-minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epochs,save_dir)
-    if save_dir ~= nil then  
-        local record_file = io.open(save_dir..'output.txt', 'a') 
-        record_file:write('Training Output:\n') 
-        record_file:close()
-    end
-    local inplane = decoder:get(2).weight:size(1)
-    local outplane = decoder:get(2).weight:size(2) 
-    
-    local net = nn.Sequential() 
-    net:add(encoder) 
-    net:add(nn.ModuleL1Penalty(true,l1w,true)) 
-    net:add(decoder) 
-    net:cuda() 
-    local criterion = nn.MSECriterion():cuda() 
-    local loss_plot = torch.zeros(epochs)
-    
-    for iter = 1,epochs do 
-        local epoch_loss = 0 
-        local epoch_sparsity = 0 
-        local epoch_rec_error = 0 
-        sys.tic() 
-        for i = 1, ds:size() do 
-           progress(i,ds:size()) 
-           local X = ds:next()
-           local Xr = net:forward(X)
-           local rec_error = criterion:forward(Xr,X)   
-           local Y = net:get(1).output 
-           net:zeroGradParameters()
-           local rec_grad = criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
-           net:backward(X,rec_grad)
-           --fixed decoder 
-           if fix_decoder == true then 
-            net:get(3):get(2).gradWeight:fill(0) 
-            net:get(3):get(2).gradBias:fill(0)
-           end
-           --training a decoder 
-           net:updateParameters(learn_rate) 
-           --track loss 
-           local sample_rec_error = Xr:clone():add(-1,X):pow(2):mean()/X:clone():pow(2):mean()
-           local sample_sparsity = 1-(Y:float():gt(0):sum()/Y:nElement())
-           local sample_loss = 0.5*rec_error + l1w*Y:norm(1)/(bsz*outplane*32*32)  
-           epoch_rec_error = epoch_rec_error + sample_rec_error
-           epoch_sparsity = epoch_sparsity + sample_sparsity 
-           epoch_loss = epoch_loss + sample_loss 
-        end
-        local epoch_rec_error = epoch_rec_error/ds:size() 
-        local average_loss = epoch_loss/ds:size()  
-        loss_plot[iter] = average_loss
-        local average_sparsity = epoch_sparsity/ds:size() 
-        local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
-        print(output) 
-        if save_dir ~= nil then  
-            local record_file = io.open(save_dir..'output.txt', 'a') 
-            record_file:write(output..'\n') 
-            record_file:close()
-        end
-    end 
-    return encoder,loss_plot 
-end
 
 
 
