@@ -14,6 +14,8 @@ if data == nil then
     data = data.datacn:resize(50000,3,32,32):narrow(1,1,1000)  
 end 
 
+learn_rate = find_learn_rate(encoder,decoder,true,ds_small,l1w)
+
 Zfista = ConvFISTA(decoder,data,niter,l1w,L)
 eval_fista = eval_sparse_code(data,Zfista,decoder,l1w)
 -------------------------------------------------------------
