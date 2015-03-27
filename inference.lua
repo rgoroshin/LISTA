@@ -63,11 +63,6 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
             Y:copy(Ynext)
             Zprev:copy(Z)
             t = tnext
-            --if math.fmod(i,10)==0 then 
-            --    --loss 
-            --    local loss = 0.5*Xerr:pow(2):mean()+l1w*Z:abs():mean()
-            --    print(loss); 
-            --end
         end
         return Y 
     end
@@ -131,7 +126,7 @@ minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epoc
            local X = ds:next()
            local Xr = net:forward(X)
            local rec_error = criterion:forward(Xr,X)   
-           local Y = net:get(1).output 
+           local Z = net:get(1).output 
            net:zeroGradParameters()
            local rec_grad = criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
            net:backward(X,rec_grad)
@@ -144,8 +139,8 @@ minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epoc
            net:updateParameters(learn_rate) 
            --track loss 
            local sample_rec_error = Xr:clone():add(-1,X):pow(2):mean()/X:clone():pow(2):mean()
-           local sample_sparsity = 1-(Y:float():gt(0):sum()/Y:nElement())
-           local sample_loss = 0.5*rec_error + l1w*Y:norm(1)/(bsz*outplane*32*32)  
+           local sample_sparsity = 1-(Z:float():gt(0):sum()/Z:nElement())
+           local sample_loss = 0.5*rec_error/X:nElement() + l1w*Z:norm(1)/Z:nElement() 
            epoch_rec_error = epoch_rec_error + sample_rec_error
            epoch_sparsity = epoch_sparsity + sample_sparsity 
            epoch_loss = epoch_loss + sample_loss 
