@@ -7,7 +7,7 @@
 EXP = {}
 EXP.config_dir = './Experiments/config/'
 EXP.exp_name = {'EXP1'}
-EXP.small_exp = {true}
+EXP.small_exp = {false}
 --dataset 
 EXP.dataset = {'CIFAR_CN'}
 --loss 
@@ -17,16 +17,16 @@ EXP.bsz = {16}
 --learning rate 
 EXP.learn_rate = {nil} 
 --learning rate hyper-optimization 
-EXP.resolution = {5}
-EXP.depth = {2}
-EXP.rand_grid = {true} 
+EXP.resolution = {5} --hard-coded 
+EXP.depth = {2} --hard-coded 
+EXP.rand_grid = {true} --hard-coded  
 --epochs 
-EXP.epochs = {3}  
+EXP.epochs = {30}  
 --repeat experiments 
-EXP.repeat_exp = {2}  
+EXP.repeat_exp = {10}  
 --configs 
 configs = {} 
-configs[1] = {name='FISTA',repeat_exp=1,niter=10} 
+configs[1] = {name='FISTA',repeat_exp=1,niter=1000} 
 ----LISTA with untied weights 
 configs[2]  = {name='LISTA',nloops=0,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
 configs[3]  = {name='LISTA',nloops=1,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 

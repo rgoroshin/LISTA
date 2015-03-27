@@ -152,19 +152,33 @@ ls_in_dir = function(data_dir, ls_command)
     return list 
 end
 
-find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter,max,min,res)
+find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter,min,max,ncoarse)
     --finds the optimal learning rate for [net] optimized by calling [foptim]
     --the trained network is evaluated by calling [feval]. 
     --This function uses a coarse-to-fine searchof depth [niter] to find
     --the optimal learning rate.  
     print('Finding optimal learning rate...') 
-    local min = min or -6 
-    local max = max or -1
-    local res = res or 3 
-    local grid = torch.logspace(min,max,res)
+    local min = min or -10 
+    local max = max or -5
+    local niter = niter or 2 
+    local epochs = epochs or 1 
+    
+    local get_grid = function(min,max) 
+        --for uniform grid: [ncoarse]=[nfine] 
+        local ncoarse = ncoarse or 10
+        local nfine = 2*ncoarse 
+        local gridf = torch.logspace(min,max,nfine)
+        local idx = torch.randperm(nfine):narrow(1,1,ncoarse) 
+        local grid = torch.Tensor(ncoarse)
+        for i = 1,ncoarse do 
+            grid[i] = gridf[idx[i]] 
+        end
+        return torch.sort(grid) 
+    end
+   
+    local grid = get_grid(min,max) 
+
     local best_learn_rate = 0 
-    niter = niter or 2 
-    epochs = epochs or 3 
     for iter = 1,niter do
         print('Level '..iter..' of '..niter) 
         local loss_grid = grid:clone():zero()
@@ -182,7 +196,10 @@ find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter
         if ii == 1 or ii == res then 
            return best_learn_rate 
         end
-        local new_grid = torch.logspace(math.log10(grid[ii-1]),math.log10(grid[ii+1]),res) 
+        local new_grid = grid  
+        if ii<grid:size(1) and ii>1 then  
+            new_grid = get_grid(math.log10(grid[ii-1]),math.log10(grid[ii+1])) 
+        end
         if grid:add(-1,new_grid):norm(1)==0 then 
             return best_learn_rate 
         end

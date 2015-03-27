@@ -89,7 +89,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
     --find max eigen value 
     L = 600 or 1.05*findMaxEigenValue(decoder)
     
-    get_codes = function(config,decoder,ds_train,ds_test) 
+    get_codes = function(config,decoder,ds_train,ds_test,ds_small) 
         local Ztrain,Ztest,loss_plot 
         if config.name == 'FISTA' then 
             print('FISTA interence...')
@@ -99,35 +99,38 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
             local inplane = decoder:get(2).weight:size(1)
             local outplane = decoder:get(2).weight:size(2) 
             local k = decoder:get(2).kW
-            local We = nn.SpatialConvolution(inplane,outplane,k,k,stride,stride) 
+            local We = nn.SpatialConvolution(inplane,outplane,k,k) 
             We.weight:copy(flip(decoder:get(2).weight)) 
             We.bias:fill(0)
             local encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+            local learn_rate  
             if config.learn_rate == nil then 
-                config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
+                learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
                 local record_file = io.open(save_dir..'output.txt', 'a') 
-                record_file:write('found learn_rate = '..config.learn_rate..'\n') 
+                record_file:write('found learn_rate = '..learn_rate..'\n') 
                 record_file:close()
+            else 
+                learn_rate = config.learn_rate 
             end
             --training
             print('Training LISTA via lasso..')
-            encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+            encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,learn_rate,config.epochs,config.save_dir)
             Ztrain = transform_data(ds_train.data[1],encoder)
             Ztest = transform_data(ds_test.data[1],encoder)
         elseif config.name == 'ReLU' then 
-            local inplane = decoder:get(2).weight:size(1)
-            local outplane = decoder:get(2).weight:size(2) 
-            local k = decoder:get(2).kW
-            local encoder = construct_deep_net(config.nlayers,inplane,outplane,k,config.untied_weights,config)
+            local encoder = construct_deep_net(decoder,config.nlayers,config.untied_weights,config)
+            local learn_rate  
             if config.learn_rate == nil then 
-                config.learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
+                learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
                 local record_file = io.open(save_dir..'output.txt', 'a') 
-                record_file:write('found learn_rate = '..config.learn_rate..'\n') 
+                record_file:write('found learn_rate = '..learn_rate..'\n') 
                 record_file:close()
+            else 
+                learn_rate = config.learn_rate 
             end
             --training
             print('Training ReLU network via lasso..')
-            encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,config.learn_rate,config.epochs,config.save_dir)
+            encoder,loss_plot = minimize_lasso_sgd(encoder,decoder,config.fix_decoder,ds_train,config.l1w,learn_rate,config.epochs,config.save_dir)
             Ztrain = transform_data(ds_train.data[1],encoder)
             Ztest = transform_data(ds_test.data[1],encoder)
         else 
@@ -159,7 +162,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
         local record_file = io.open(save_dir..'output.txt', 'a') 
         record_file:write('======== Repeat '..j..' ========\n') 
         record_file:close()
-        Ztrain,Ztest,loss_plot = get_codes(config,decoder,ds_train,ds_test)
+        Ztrain,Ztest,loss_plot = get_codes(config,decoder,ds_train,ds_test,ds_small)
         eval_test = eval_sparse_code(ds_test.data[1],Ztest,decoder,l1w)
         eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,l1w)
         output = '\nEval Train\n'..serializeTable(eval_train)..'\n' 

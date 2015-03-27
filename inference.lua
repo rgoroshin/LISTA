@@ -160,10 +160,15 @@ minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epoc
     return encoder,loss_plot 
 end
 
-construct_deep_net = function(nlayers,inplane,outplane,k,untied_weights,config)
+construct_deep_net = function(decoder,nlayers,untied_weights,config)
 --deep ReLU network with [optionally] shared weights (inialized identically to LISTA) 
     print('Initilizing deep ReLU from LISTA init') 
+    local inplane = decoder:get(2).weight:size(1)
+    local outplane = decoder:get(2).weight:size(2) 
+    local k = decoder:get(2).kW
     local We = nn.SpatialConvolution(inplane,outplane,k,k) 
+    We.weight:copy(flip(decoder:get(2).weight)) 
+    We.bias:fill(0)
     local LISTA = construct_LISTA(We,1,config.l1w,config.L,config.untied_weights)
     local pad1 = LISTA.pad1
     local pad2 = LISTA.pad2

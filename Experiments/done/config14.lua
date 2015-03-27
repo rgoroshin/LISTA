@@ -1,14 +1,14 @@
 --==misc==
 exp_name='EXP1/config14'
-small_exp=true
+small_exp=false
 --==dataset==
 dataset='CIFAR_CN'
 --==loss==
 l1w=0.5
 --==learning==
-epochs=3
+epochs=30
 bsz=16
-repeat_exp=2
+repeat_exp=10
 --==architectures==
 arch={
  untied_weights = true,
