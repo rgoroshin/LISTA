@@ -52,8 +52,8 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
     exp_config() 
     save_dir = './Results/Experiments/'..exp_name..'/'
     os.execute('mkdir -p '..save_dir)  
-    os.execute('mkdir -p '..save_dir..'Code/') 
-    os.execute('cp *.lua '..save_dir..'Code/')
+    --os.execute('mkdir -p '..save_dir..'Code/') 
+    --os.execute('cp *.lua '..save_dir..'Code/')
     os.execute('cp '..done_dir..paths.basename(config_file)..' '..save_dir) 
     record_file = io.open(save_dir..'output.txt', 'w') 
     record_file:close()
@@ -155,11 +155,12 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
     config.nlayers=arch.nlayers 
     config.fix_decoder=arch.fix_decoder 
     config.name=arch.name
-    config.niter=arch.niter 
+    config.niter=arch.niter
+    config.save_dir = save_dir 
     ---
     repeat_loss_plot={}  
     for j=1,repeat_exp do 
-        local record_file = io.open(save_dir..'output.txt', 'a') 
+        local record_file = io.open(save_dir..'summary_output.txt', 'a') 
         record_file:write('======== Repeat '..j..' ========\n') 
         record_file:close()
         Ztrain,Ztest,loss_plot = get_codes(config,decoder,ds_train,ds_test,ds_small)
@@ -167,7 +168,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
         eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,l1w)
         output = '\nEval Train\n'..serializeTable(eval_train)..'\n' 
         output = output..'Eval Test\n'..serializeTable(eval_test)..'\n' 
-        local record_file = io.open(save_dir..'output.txt', 'a') 
+        local record_file = io.open(save_dir..'summary_output.txt', 'a') 
         record_file:write(output..'\n') 
         record_file:close()
         results.train.loss[j] = eval_train.average_loss 

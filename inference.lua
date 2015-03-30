@@ -157,6 +157,12 @@ minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epoc
             record_file:close()
         end
     end 
+    if save_dir ~= nil then 
+        gnuplot.plot(loss_plot,'.')
+        gnuplot.plotflush()
+        gnuplot.figprint(save_dir..'train_loss.pdf')
+        gnuplot.closeall() 
+    end 
     return encoder,loss_plot 
 end
 
