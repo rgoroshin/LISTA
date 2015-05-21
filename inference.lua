@@ -288,7 +288,7 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
         error('Unsupported LISTA encoder') 
     end
     local internal_LISTA_loop = function(S) 
-        print('adding internal loop') 
+        --print('adding internal loop') 
         local net = nn.Sequential() 
         local branch1 = nn.ParallelTable() 
         local split = nn.ConcatTable() 
@@ -431,9 +431,10 @@ construct_recurrent_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     local x = nn.Identity()() 
     local z = {}
     --first stage 
-    local t1 = encoder(x)  
+    local t1 = encoder(x) 
+    local t1a,t1b = nn.ConcatTable():add(nn.Identity()):add(nn.Identity())(t1):split(2)
     if nloops == 0 then 
-        z[1] = nn.Threshold(0,0)(t1) 
+        z[1] = nn.Threshold(0,0)(t1a) 
         local net = nn.gModule({x},z)
         net.encoder = encoder:get(2)  
         net:cuda()
@@ -442,13 +443,13 @@ construct_recurrent_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     --internal stages
     local nloops = nloops or 1
     for i = 1, nloops do 
-        local t2 = nn.Threshold(0,0)(t1) 
+        local t2 = nn.Threshold(0,0)(t1a) 
         z[#z+1]=t2 
         local t3 = S(t2)
-        local sum = nn.CAddTable()({t1,t3})
-        t1 = sum  
+        local sum = nn.CAddTable()({t1b,t3})
+        t1a = sum  
     end
-    z[#z+1] = nn.Threshold(0,0)(t1) 
+    z[#z+1] = nn.Threshold(0,0)(t1a) 
     local net = nn.gModule({x},z) 
     net.S = S:get(2) 
     return net
