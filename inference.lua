@@ -26,11 +26,11 @@ findMaxEigenValue = function(decoder)
     return L 
 end
 
-ConvFISTA = function(decoder,data,niter,l1w,L)
+iter_infer = function(decoder,data,niter,l1w,L,method)
     --infer sparse code of dataset [ds] in dictionary [decoder] 
+    method = method or 'FISTA' 
     local L = L or 1.05*findMaxEigenValue(decoder) 
     local n = 256 
-    local inplane = decoder:get(2).weight:size(1)
     local outplane = decoder:get(2).weight:size(2) 
     local codes = torch.Tensor(data:size(1),outplane,data:size(3),data:size(4))
     local k = decoder:get(2).kW
@@ -43,7 +43,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
     local Z = Zprev:clone() 
     local Y = Zprev:clone() 
     local Ynext = Zprev:clone() 
-    local infer = function(X)  
+    local infer_FISTA = function(X)  
     --FISTA inference iterates
         local t = 1
         Zprev:fill(0)
@@ -66,12 +66,31 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
         end
         return Y 
     end
+    local infer_ISTA = function(X)  
+    --ISTA inference iterates
+        Zprev:fill(0)
+        for i = 1,niter do 
+            --ISTA
+            Xerr = decoder:forward(Zprev):add(-1,X)  
+            dZ = decoder:backward(Zprev,Xerr)   
+            Z:copy(Zprev:add(-1/L,dZ))  
+            Z:add(-l1w/L) 
+            Z:copy(threshold(Z))
+            Zprev:copy(Z)
+        end
+        return Z 
+    end
     --infer codes for entire dataset 
     for i = 0,data:size(1)-n,n do 
         progress(i,data:size(1))
         X:copy(data:narrow(1,i+1,n))
-        Y = infer(X) 
-        codes:narrow(1,i+1,n):copy(Y) 
+        local code 
+        if method == 'FISTA' then 
+            code = infer_FISTA(X) 
+        elseif method == 'ISTA' then 
+            code = infer_ISTA(X) 
+        end
+        codes:narrow(1,i+1,n):copy(code) 
     end
     --process the remaining data 
     local a = math.floor(data:size(1)/n)*n+1
@@ -83,7 +102,7 @@ ConvFISTA = function(decoder,data,niter,l1w,L)
         Y = Zprev:clone() 
         Ynext = Zprev:clone() 
         X:copy(data:narrow(1,a,b))
-        Y = infer(X)
+       -- Y = infer(X)
         codes:narrow(1,a,b):copy(Y)  
     end 
     --clean up  
@@ -269,6 +288,7 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
         error('Unsupported LISTA encoder') 
     end
     local internal_LISTA_loop = function(S) 
+        print('adding internal loop') 
         local net = nn.Sequential() 
         local branch1 = nn.ParallelTable() 
         local split = nn.ConcatTable() 
@@ -334,6 +354,108 @@ construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
     net.pad2 = S:get(1) 
     return net
 end 
+
+construct_recurrent_LISTA = function(encoder,nloops,alpha,L,untied_weights)
+--[We] = encoder (linear operator) 
+--[S] = 'explaining-away' (square linear operator)
+--[n] = number of LISTA loops 
+--WARNING: Assumes CudaTensor  
+    encoder = encoder:clone() 
+    local alpha = alpha or 0.5 
+    --initialize S 
+    local S = nn.Sequential() 
+    if torch.typename(encoder) == 'nn.Linear' then 
+        local We = encoder.weight:float()
+        local D = We:size(1) 
+        local Sw = torch.mm(We,We:t()) 
+        local _,L,_ = math.sqrt(torch.svd(We)[1]) 
+        Sw = torch.eye(D,D) - torch.mm(We,We:t()):div(L)   
+        S:add(nn.Linear(D,D))
+        S:get(1).weight:copy(Sw) 
+        S:get(1).bias:fill(-alpha/L)
+        S:cuda()
+        encoder:cuda()
+    elseif string.find(torch.typename(encoder),'nn.SpatialConvolution') then 
+        print('Initializing convolutional LISTA...') 
+        -- flip because conv2 flips whereas nn.SpatialConvolution will not 
+        local We = flip(encoder.weight) 
+        --dimensions (assume square, odd-sized kernels and stride = 1) 
+        local inplane = We:size(1) 
+        local outplane = We:size(2)
+        local k = We:size(3)
+        local padding = (k-1)/2
+        local pad = nn.SpatialPadding(padding,padding,padding,padding,3,4) 
+        local pad2 = nn.SpatialPadding(2*padding,2*padding,2*padding,2*padding,3,4) 
+        local Sw = torch.Tensor(outplane,outplane,2*k-1,2*k-1) 
+        for i = 1,outplane do
+            Sw[i] = torch.conv2(We:select(2,i),flip(We),'F') 
+        end
+        --find L using power method
+        if L == nil then  
+            local k2 = 2*k-1
+            local input = norm_filters(torch.rand(outplane,outplane,k2,k2)) 
+            local input_prev = input:clone() 
+            local output = input:clone():zero()
+            for i = 1,100 do 
+                progress(i,100)
+                for i = 1,outplane do
+                    output[i] = torch.conv2(input:select(2,i),Sw,'F'):narrow(2,(k2-1)/2,k2):narrow(3,(k2-1)/2,k2) 
+                end
+                input_prev:copy(input) 
+                input:copy(norm_filters(output))
+            end
+            L = output:norm() 
+        end
+        Sw:div(L) 
+        local I = torch.zeros(outplane,outplane,2*k-1,2*k-1) 
+        for i = 1,outplane do 
+            I[i][i][math.ceil(k-0.5)][math.ceil(k-0.5)] = 1 
+        end
+        Sw = I - Sw
+        S:add(pad2:clone()) 
+        S:add(nn.SpatialConvolution(outplane,outplane,2*k-1,2*k-1))
+        S:get(2).weight:copy(Sw) 
+        S:get(2).bias:fill(0)
+        S:cuda() 
+        encoder.weight:div(L) 
+        encoder.bias:fill(-alpha/L)
+        local encoder_same = nn.Sequential() 
+        encoder_same:add(pad:clone()) 
+        encoder_same:add(encoder) 
+        encoder = encoder_same:cuda() 
+    else 
+        error('Unsupported LISTA encoder') 
+    end
+    
+    --nngraph module 
+    local x = nn.Identity()() 
+    local z = {}
+    --first stage 
+    local t1 = encoder(x)  
+    if nloops == 0 then 
+        z[1] = nn.Threshold(0,0)(t1) 
+        local net = nn.gModule({x},z)
+        net.encoder = encoder:get(2)  
+        net:cuda()
+        return net 
+    end 
+    --internal stages
+    local nloops = nloops or 1
+    for i = 1, nloops do 
+        local t2 = nn.Threshold(0,0)(t1) 
+        z[#z+1]=t2 
+        local t3 = S(t2)
+        local sum = nn.CAddTable()({t1,t3})
+        t1 = sum  
+    end
+    z[#z+1] = nn.Threshold(0,0)(t1) 
+    local net = nn.gModule({x},z) 
+    net.S = S:get(2) 
+    return net
+end 
+
+
+
 
 
 

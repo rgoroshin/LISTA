@@ -6,7 +6,7 @@
 --==options==
 EXP = {}
 EXP.config_dir = './Experiments/config/'
-EXP.exp_name = {'EXP1'}
+EXP.exp_name = {'compare_all'}
 EXP.small_exp = {false}
 --dataset 
 EXP.dataset = {'CIFAR_CN'}
@@ -21,21 +21,21 @@ EXP.resolution = {5} --hard-coded
 EXP.depth = {2} --hard-coded 
 EXP.rand_grid = {true} --hard-coded  
 --epochs 
-EXP.epochs = {30}  
+EXP.epochs = {20}  
 --repeat experiments 
-EXP.repeat_exp = {10}  
+EXP.repeat_exp = {5}  
 --configs 
 configs = {} 
 configs[1] = {name='FISTA',repeat_exp=1,niter=1000} 
 ----LISTA with untied weights 
-configs[2]  = {name='LISTA',nloops=0,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[3]  = {name='LISTA',nloops=1,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[4]  = {name='LISTA',nloops=3,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[5]  = {name='LISTA',nloops=5,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[6]  = {name='LISTA',nloops=0,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[7]  = {name='LISTA',nloops=1,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[8]  = {name='LISTA',nloops=3,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
-configs[9]  = {name='LISTA',nloops=5,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[2]  = {name='LISTA',nlayers=0,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[3]  = {name='LISTA',nlayers=1,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[4]  = {name='LISTA',nlayers=3,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[5]  = {name='LISTA',nlayers=5,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[6]  = {name='LISTA',nlayers=0,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[7]  = {name='LISTA',nlayers=1,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[8]  = {name='LISTA',nlayers=3,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
+configs[9]  = {name='LISTA',nlayers=5,untied_weights=true,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
 configs[10] = {name='ReLU',nlayers=0,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
 configs[11] = {name='ReLU',nlayers=1,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 
 configs[12] = {name='ReLU',nlayers=3,untied_weights=false,fix_decoder=true,learn_rate=learn_rate,epochs=train_epochs,save_dir=save_dir} 

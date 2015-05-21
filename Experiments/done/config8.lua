@@ -1,19 +1,19 @@
 --==misc==
-exp_name='EXP1/config8'
+exp_name='compare_all/config8'
 small_exp=false
 --==dataset==
 dataset='CIFAR_CN'
 --==loss==
 l1w=0.5
 --==learning==
-epochs=30
+epochs=20
 bsz=16
-repeat_exp=10
+repeat_exp=5
 --==architectures==
 arch={
  untied_weights = true,
+ nlayers = 3,
  fix_decoder = true,
- nloops = 3,
  name = "LISTA",
 }
 

@@ -16,8 +16,8 @@ math.randomseed(123)
 cutorch.manualSeed(123) 
 torch.manualSeed(123)
 --==****interactive mode****==
-interactive=false 
-gpu_id = 1 
+interactive=true 
+gpu_id = 3 
 --============================
 if interactive == false then 
         disp_results = 10
@@ -72,8 +72,9 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
         error('unknown dataset!') 
     end 
     
-    --data sources 
-    ds_small = DataSource({dataset = train_data:narrow(1,1,1000), batchSize = bsz})
+    --data sources
+    nsmall = 10000
+    ds_small = DataSource({dataset = train_data:narrow(1,1,nsmall), batchSize = bsz})
     ds_train = DataSource({dataset = train_data, batchSize = bsz})
     ds_test = DataSource({dataset = test_data, batchSize = bsz})
    
@@ -102,7 +103,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
             local We = nn.SpatialConvolution(inplane,outplane,k,k) 
             We.weight:copy(flip(decoder:get(2).weight)) 
             We.bias:fill(0)
-            local encoder = construct_LISTA(We,config.nloops,config.l1w,config.L,config.untied_weights)
+            local encoder = construct_LISTA(We,config.nlayers,config.l1w,config.L,config.untied_weights)
             local learn_rate  
             if config.learn_rate == nil then 
                 learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
@@ -146,6 +147,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
              test ={loss=rpt:clone(),rec=rpt:clone(),sparsity=rpt:clone()}}
     --pack arguments 
     local config = {} 
+    config.learn_rate = learn_rate 
     config.l1w=l1w 
     config.L=L 
     config.epochs=epochs 
@@ -163,6 +165,11 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
         local record_file = io.open(save_dir..'summary_output.txt', 'a') 
         record_file:write('======== Repeat '..j..' ========\n') 
         record_file:close()
+        --get random samples in ds_small 
+        r = torch.randperm(ds_train.data[1]:size(1)):narrow(1,1,nsmall)
+        for i = 1,nsmall do 
+            ds_small.data[1][i]:copy(ds_train.data[1][r[i]]) 
+        end
         Ztrain,Ztest,loss_plot = get_codes(config,decoder,ds_train,ds_test,ds_small)
         eval_test = eval_sparse_code(ds_test.data[1],Ztest,decoder,l1w)
         eval_train = eval_sparse_code(ds_train.data[1],Ztrain,decoder,l1w)
