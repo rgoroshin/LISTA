@@ -116,7 +116,8 @@ iter_infer = function(decoder,data,niter,l1w,L,method)
 end
 
 --(1) s.g.d. minimization of L = ||x-Df(x)|| + l1w*|f(x)| w.r.t. f() (and D if [fix_decoder]==false)  
-minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epochs,save_dir)
+minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epochs,recurrent,save_dir)
+    recurrent = recurrent or false 
     local sizeAverage = false
     if save_dir ~= nil then  
         local record_file = io.open(save_dir..'output.txt', 'a') 
@@ -126,63 +127,91 @@ minimize_lasso_sgd = function(encoder,decoder,fix_decoder,ds,l1w,learn_rate,epoc
     local inplane = decoder:get(2).weight:size(1)
     local outplane = decoder:get(2).weight:size(2) 
     
-    local net = nn.Sequential() 
-    net:add(encoder) 
-    net:add(nn.ModuleL1Penalty(true,l1w,sizeAverage)) 
-    net:add(decoder) 
-    net:cuda() 
-    local criterion = nn.MSECriterion():cuda()
-    criterion.sizeAverage = sizeAverage 
-    local loss_plot = torch.zeros(epochs)
     
-    for iter = 1,epochs do 
-        local epoch_loss = 0 
-        local epoch_sparsity = 0 
-        local epoch_rec_error = 0 
-        sys.tic() 
-        for i = 1, ds:size() do 
-           progress(i,ds:size()) 
-           local X = ds:next()
-           local Xr = net:forward(X)
-           local rec_error = criterion:forward(Xr,X)   
-           local Z = net:get(1).output 
-           net:zeroGradParameters()
-           local rec_grad = criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
-           net:backward(X,rec_grad)
-           --fixed decoder 
-           if fix_decoder == true then 
-            net:get(3):get(2).gradWeight:fill(0) 
-            net:get(3):get(2).gradBias:fill(0)
-           end
-           --training a decoder 
-           net:updateParameters(learn_rate) 
-           --track loss 
-           local sample_rec_error = Xr:clone():add(-1,X):pow(2):mean()/X:clone():pow(2):mean()
-           local sample_sparsity = 1-(Z:float():gt(0):sum()/Z:nElement())
-           local sample_loss = 0.5*rec_error/X:nElement() + l1w*Z:norm(1)/Z:nElement() 
-           epoch_rec_error = epoch_rec_error + sample_rec_error
-           epoch_sparsity = epoch_sparsity + sample_sparsity 
-           epoch_loss = epoch_loss + sample_loss 
+    local rec_criterion = nn.ParallelCriterion() 
+    local l1_criterion = nn.ParallelCriterion() 
+    local X = ds:next() 
+    local Z = encoder:forward(X)
+    
+    if type(Z) == 'table' then  
+        --recurrent-style training (multi-output) 
+        rec_criterion = nn.ParallelCriterion() 
+        l1_criterion = nn.ParallelCriterion() 
+        local decoder_parallel = nn.ConcatTable()                                                                                                                  
+        for i = 1,#Z do 
+            decoder_parallel:add(decoder)
+            local c1 = nn.MSECriterion()
+            c1.sizeAverage = sizeAverage 
+            local c2 = nn.L1Criterion()
+            c2.sizeAverage = sizeAverage 
+            rec_criterion:add(c1) 
+            l1_criterion:add(c2) 
         end
-        local epoch_rec_error = epoch_rec_error/ds:size() 
-        local average_loss = epoch_loss/ds:size()  
-        loss_plot[iter] = average_loss
-        local average_sparsity = epoch_sparsity/ds:size() 
-        local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
-        print(output) 
-        if save_dir ~= nil then  
-            local record_file = io.open(save_dir..'output.txt', 'a') 
-            record_file:write(output..'\n') 
-            record_file:close()
-        end
-    end 
-    if save_dir ~= nil then 
-        gnuplot.plot(loss_plot,'.')
-        gnuplot.plotflush()
-        gnuplot.figprint(save_dir..'train_loss.pdf')
-        gnuplot.closeall() 
-    end 
-    return encoder,loss_plot 
+        decoder = decoder_parallel 
+    else 
+        --ordinary training (single-output) 
+        rec_criterion = nn.MSECriterion() 
+        l1_criterion = nn.L1Criterion() 
+    end
+end 
+
+--use gpu 
+rec_criterion:cuda() 
+l1_criterion:cuda() 
+encoder:cuda() 
+decoder:cuda()
+
+local loss_plot = torch.zeros(epochs)
+
+for iter = 1,epochs do 
+    local epoch_loss = 0 
+    local epoch_sparsity = 0 
+    local epoch_rec_error = 0 
+    sys.tic() 
+    for i = 1, ds:size() do 
+       progress(i,ds:size()) 
+       local X = ds:next()
+       local Z = encoder:forward(X) 
+       local Xr = decoder:forward(Z)
+       local rec_error = rec_criterion:forward(Xr,X)   
+       local rec_grad = rec_criterion:backward(Xr,X):mul(0.5) --MSE criterion multiplies by 2 
+       local dZrec = decoder:backward(Z,rec_grad) 
+       --training a decoder 
+       if fix_decoder == false then 
+        decoder:zeroGradParameters()
+        decoder:updateParameters(learn_rate) 
+       end 
+       local l1_error = l1_criterion:forward(Z) 
+       local dZl1 = l1_criterion:backward(Z):mul(l1w) 
+       local dZ = dZrec+dZl1 
+       encoder:zeroGradParameters()
+       encoder:backward(X,dZ) 
+       --track loss 
+       local sample_sparsity = 1-(Z:float():gt(0):sum()/Z:nElement())
+       local sample_loss = rec_error + l1_error  
+       epoch_rec_error = epoch_rec_error + sample_rec_error
+       epoch_sparsity = epoch_sparsity + sample_sparsity 
+       epoch_loss = epoch_loss + sample_loss 
+    end
+    local epoch_rec_error = epoch_rec_error/ds:size() 
+    local average_loss = epoch_loss/ds:size()  
+    loss_plot[iter] = average_loss
+    local average_sparsity = epoch_sparsity/ds:size() 
+    local output = tostring(iter)..' Time: '..sys.toc()..' %Rec.Error '..epoch_rec_error..' Sparsity:'..average_sparsity..' Loss: '..average_loss 
+    print(output) 
+    if save_dir ~= nil then  
+        local record_file = io.open(save_dir..'output.txt', 'a') 
+        record_file:write(output..'\n') 
+        record_file:close()
+    end
+end 
+if save_dir ~= nil then 
+    gnuplot.plot(loss_plot,'.')
+    gnuplot.plotflush()
+    gnuplot.figprint(save_dir..'train_loss.pdf')
+    gnuplot.closeall() 
+end 
+return encoder,loss_plot 
 end
 
 construct_deep_net = function(decoder,nlayers,untied_weights,config)
@@ -216,146 +245,7 @@ construct_deep_net = function(decoder,nlayers,untied_weights,config)
     return net 
 end
 
-construct_LISTA = function(encoder,nloops,alpha,L,untied_weights)
---[We] = encoder (linear operator) 
---[S] = 'explaining-away' (square linear operator)
---[n] = number of LISTA loops 
---WARNING: Assumes CudaTensor  
-    encoder = encoder:clone() 
-    local alpha = alpha or 0.5 
-    --initialize S 
-    local S = nn.Sequential() 
-    if torch.typename(encoder) == 'nn.Linear' then 
-        local We = encoder.weight:float()
-        local D = We:size(1) 
-        local Sw = torch.mm(We,We:t()) 
-        local _,L,_ = math.sqrt(torch.svd(We)[1]) 
-        Sw = torch.eye(D,D) - torch.mm(We,We:t()):div(L)   
-        S:add(nn.Linear(D,D))
-        S:get(1).weight:copy(Sw) 
-        S:get(1).bias:fill(-alpha/L)
-        S:cuda()
-        encoder:cuda()
-    elseif string.find(torch.typename(encoder),'nn.SpatialConvolution') then 
-        print('Initializing convolutional LISTA...') 
-        -- flip because conv2 flips whereas nn.SpatialConvolution will not 
-        local We = flip(encoder.weight) 
-        --dimensions (assume square, odd-sized kernels and stride = 1) 
-        local inplane = We:size(1) 
-        local outplane = We:size(2)
-        local k = We:size(3)
-        local padding = (k-1)/2
-        local pad = nn.SpatialPadding(padding,padding,padding,padding,3,4) 
-        local pad2 = nn.SpatialPadding(2*padding,2*padding,2*padding,2*padding,3,4) 
-        local Sw = torch.Tensor(outplane,outplane,2*k-1,2*k-1) 
-        for i = 1,outplane do
-            Sw[i] = torch.conv2(We:select(2,i),flip(We),'F') 
-        end
-        --find L using power method
-        if L == nil then  
-            local k2 = 2*k-1
-            local input = norm_filters(torch.rand(outplane,outplane,k2,k2)) 
-            local input_prev = input:clone() 
-            local output = input:clone():zero()
-            for i = 1,100 do 
-                progress(i,100)
-                for i = 1,outplane do
-                    output[i] = torch.conv2(input:select(2,i),Sw,'F'):narrow(2,(k2-1)/2,k2):narrow(3,(k2-1)/2,k2) 
-                end
-                input_prev:copy(input) 
-                input:copy(norm_filters(output))
-            end
-            L = output:norm() 
-        end
-        Sw:div(L) 
-        local I = torch.zeros(outplane,outplane,2*k-1,2*k-1) 
-        for i = 1,outplane do 
-            I[i][i][math.ceil(k-0.5)][math.ceil(k-0.5)] = 1 
-        end
-        Sw = I - Sw
-        S:add(pad2:clone()) 
-        S:add(nn.SpatialConvolution(outplane,outplane,2*k-1,2*k-1))
-        S:get(2).weight:copy(Sw) 
-        S:get(2).bias:fill(0)
-        S:cuda() 
-        encoder.weight:div(L) 
-        encoder.bias:fill(-alpha/L)
-        local encoder_same = nn.Sequential() 
-        encoder_same:add(pad:clone()) 
-        encoder_same:add(encoder) 
-        encoder = encoder_same:cuda() 
-    else 
-        error('Unsupported LISTA encoder') 
-    end
-    local internal_LISTA_loop = function(S) 
-        --print('adding internal loop') 
-        local net = nn.Sequential() 
-        local branch1 = nn.ParallelTable() 
-        local split = nn.ConcatTable() 
-        split:add(nn.Identity())
-        split:add(nn.Identity())
-        local ff = nn.Sequential() 
-        ff:add(nn.Threshold(0,0)) 
-        if untied_weights == true then 
-            ff:add(S:clone()) 
-        else
-            ff:add(S) 
-        end
-        branch1:add(split)
-        branch1:add(ff) 
-        net:add(branch1) 
-        local forward = function(x) return {x[1][1], {x[1][2], x[2]}} end
-        local backward = function(x) return {{x[1], x[2][1]}, x[2][2]} end  
-        net:add(nn.ReshapeTable(forward,backward))  
-        local branch2 = nn.ParallelTable() 
-        branch2:add(nn.Identity()) 
-        branch2:add(nn.CAddTable())
-        net:add(branch2) 
-        return net 
-    end
-    --first stage 
-    local net = nn.Sequential() 
-    net:add(encoder)
-    if nloops == 0 then 
-        net:add(nn.Threshold(0,0)) 
-        net.encoder = encoder:get(2)  
-        net:cuda()
-        return net 
-    end 
-    local split = nn.ConcatTable() 
-    split:add(nn.Identity()) 
-    split:add(nn.Identity())
-    net:add(split) 
-    --internal stages
-    local nloops = nloops or 1
-    for i = 1, nloops-1 do 
-        net:add(internal_LISTA_loop(S)) 
-    end
-    --last stage 
-    local last_stage = nn.Sequential()
-    local branch = nn.ParallelTable() 
-    branch:add(nn.Identity()) 
-    local ff = nn.Sequential() 
-    ff:add(nn.Threshold(0,0)) 
-    if untied_weights == true then 
-        ff:add(S:clone()) 
-    else
-        ff:add(S) 
-    end
-    branch:add(ff) 
-    last_stage:add(branch) 
-    last_stage:add(nn.CAddTable()) 
-    last_stage:add(nn.Threshold(0,0)) 
-    net:add(last_stage) 
-    net:cuda() 
-    net.S = S:get(2) 
-    net.encoder = encoder:get(2) 
-    net.pad1 = net:get(1):get(1) 
-    net.pad2 = S:get(1) 
-    return net
-end 
-
-construct_recurrent_LISTA = function(encoder,nloops,alpha,L,untied_weights)
+construct_LISTA = function(encoder,nloops,alpha,L,untied_weights,recurrent)
 --[We] = encoder (linear operator) 
 --[S] = 'explaining-away' (square linear operator)
 --[n] = number of LISTA loops 
@@ -449,8 +339,14 @@ construct_recurrent_LISTA = function(encoder,nloops,alpha,L,untied_weights)
         local sum = nn.CAddTable()({t1b,t3})
         t1a = sum  
     end
-    z[#z+1] = nn.Threshold(0,0)(t1a) 
-    local net = nn.gModule({x},z) 
+    z[#z+1] = nn.Threshold(0,0)(t1a)
+   
+    local net 
+    if recurrent == true then 
+        net = nn.gModule({x},z) 
+    else 
+        net = nn.gModule({x},z[#z]) 
+    end
     net.S = S:get(2) 
     return net
 end 

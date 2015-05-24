@@ -1,12 +1,27 @@
 dofile('init.lua')
 cutorch.setDevice(4) 
 
-x = nn.Identity()() 
-y1,y2 = nn.ConcatTable():add(nn.Identity()):add(nn.Identity())(x):split(2)
-net = nn.gModule({x},{y1,y2}) 
+m = nn.ParallelCriterion() 
+x = {} 
+for i = 1,3 do 
+    x[i] = torch.ones(5) 
+    local crit = nn.L1Cost() 
+    crit.sizeAverage = false 
+    m:add(crit)
+end
+m.repeatTarget = true 
+target = x[1]:clone():zero() 
 
-x = torch.rand(2) 
-y = net:forward(x) 
+out = m:forward(x,target) 
+
+
+
+--x = nn.Identity()() 
+--y1,y2 = nn.ConcatTable():add(nn.Identity()):add(nn.Identity())(x):split(2)
+--net = nn.gModule({x},{y1,y2}) 
+--
+--x = torch.rand(2) 
+--y = net:forward(x) 
 
 
 

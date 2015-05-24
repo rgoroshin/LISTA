@@ -243,6 +243,8 @@ for nloops = 1,5 do
     --code error 
     Zlista = LISTA:forward(X)
     Zlistar = LISTAr:forward(X)
+    --Z = Z:narrow(3,10,10):narrow(4,10,10) 
+
     code_error = Zlista:float():add(-1,Z:float()):norm()
     if type(Zlistar) == 'table' then 
         code_error2 = Zlistar[#Zlistar]:float():add(-1,Z:float()):norm()
