@@ -1,5 +1,5 @@
 --==misc==
-exp_name='compare_all/config1'
+exp_name='autoencoder_exp1/config1'
 small_exp=false
 --==dataset==
 dataset='CIFAR_CN'

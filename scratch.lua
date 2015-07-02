@@ -1,18 +1,74 @@
 dofile('init.lua')
-cutorch.setDevice(4) 
+cutorch.setDevice(1) 
 
-m = nn.ParallelCriterion() 
-x = {} 
-for i = 1,3 do 
-    x[i] = torch.ones(5) 
-    local crit = nn.L1Cost() 
-    crit.sizeAverage = false 
-    m:add(crit)
-end
-m.repeatTarget = true 
-target = x[1]:clone():zero() 
+--load a pre-trained decoder (trained on CIFAR-training set, l1w =?, using FISTA) 
+decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7')
+decoder:cuda()
 
-out = m:forward(x,target) 
+config = {
+nlayers=0,
+l1w=0.5, 
+L=600, 
+untied_weights=false, 
+recurrent=false} 
+
+inplane = decoder:get(2).weight:size(1)
+outplane = decoder:get(2).weight:size(2) 
+k = decoder:get(2).kW
+We = nn.SpatialConvolution(inplane,outplane,k,k) 
+We.weight:copy(flip(decoder:get(2).weight)) 
+We.bias:fill(0)
+
+encoder = construct_LISTA(We,config.nlayers,config.l1w,config.L,config.untied_weights,config.recurrent)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--m = nn.ParallelCriterion() 
+--x = {} 
+--for i = 1,3 do 
+--    x[i] = torch.ones(5) 
+--    local crit = nn.L1Cost() 
+--    crit.sizeAverage = false 
+--    m:add(crit)
+--end
+--m.repeatTarget = true 
+--target = x[1]:clone():zero() 
+--
+--out = m:forward(x,target) 
 
 
 
@@ -69,7 +125,10 @@ out = m:forward(x,target)
 --nsamples=1000
 --l1w=0.5 
 --L=600
---nloops=1 
+--nloops=5
+--learn_rate = 5e-8
+--epochs = 5
+--save_dir = './Results/Experiments/'
 --niter=100 
 --
 --if decoder == nil then 
@@ -91,13 +150,15 @@ out = m:forward(x,target)
 --ds = DataSource({dataset=data_small,batchSize=16})
 --
 ----the network 
---net1 = construct_LISTA(We,nloops,l1w,L,false):cuda() 
---net2 = construct_recurrent_LISTA(We,nloops,l1w,L,false):cuda() 
+--net1 = construct_LISTA(We,nloops,l1w,L,false,true):cuda() 
 --
-----output
+--output
 --sample = ds:next() 
 --out1 = net1:forward(sample) 
---out2 = net2:forward(sample) 
+--
+----train  
+--encoder,loss_plot = minimize_lasso_sgd(net1,decoder,true,ds,l1w,learn_rate,epochs,save_dir)
+
 --
 --if type(out2) == 'table' then 
 --    err = out1:float():add(-1,out2[#out2]:float()):norm()

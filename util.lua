@@ -107,20 +107,32 @@ transform_data = function(data, net, n)
 --transforms the data [[nsamples]x[dim]] using the :forward 
 --function of the auto-encoder network [net] 
 --The data is then renormalized in this new space
-    local zsz = net:forward(data:narrow(1,1,16):cuda()):size()  
+    local out = net:forward(data:narrow(1,1,16):cuda())
+    if type(out)=='table' then 
+        out = out[1] 
+    end
+    local zsz = out:size()  
     zsz[1] = data:size(1) 
     local n = n or 128 
     local z = torch.Tensor():resize(zsz)  
     for i = 0,data:size(1)-n,n do 
-        progress(i,data:size(1))  
-        z:narrow(1,i+1,n):copy(net:forward(data:narrow(1,i+1,n):cuda()))  
+        progress(i,data:size(1)) 
+        local y = net:forward(data:narrow(1,i+1,n):cuda()) 
+        if type(y) == 'table' then 
+            y = y[#y]
+        end
+        z:narrow(1,i+1,n):copy(y)  
         collectgarbage()  
     end 
     --fprop the remaining data 
     local a = math.floor(data:size(1)/n)*n+1
     local b = math.fmod(data:size(1),n)
     if a < z:size(1) then 
-        z:narrow(1,a,b):copy(net:forward(data:narrow(1,a,b):cuda()))  
+        local y = net:forward(data:narrow(1,a,b):cuda()) 
+        if type(y) == 'table' then 
+            y = y[#y]
+        end
+        z:narrow(1,a,b):copy(y)  
     end 
     collectgarbage() 
     return z 
@@ -177,6 +189,7 @@ find_learn_rate = function(encoder,decoder,fix_decoder,ds_small,l1w,epochs,niter
     end
    
     local grid = get_grid(min,max) 
+    print(grid) 
 
     local best_learn_rate = 0 
     for iter = 1,niter do

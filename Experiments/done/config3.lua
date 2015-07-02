@@ -1,5 +1,5 @@
 --==misc==
-exp_name='compare_all/config3'
+exp_name='autoencoder_exp1/config3'
 small_exp=false
 --==dataset==
 dataset='CIFAR_CN'
@@ -13,7 +13,8 @@ repeat_exp=5
 arch={
  untied_weights = false,
  nlayers = 1,
- fix_decoder = true,
+ recurrent = false,
  name = "LISTA",
+ fix_decoder = false,
 }
 

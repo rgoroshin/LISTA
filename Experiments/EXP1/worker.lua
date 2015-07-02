@@ -16,12 +16,12 @@ math.randomseed(123)
 cutorch.manualSeed(123) 
 torch.manualSeed(123)
 --==****interactive mode****==
-interactive=true 
-gpu_id = 3 
+interactive=false 
+gpu_id=3 
 --============================
 if interactive == false then 
         disp_results = 10
-        cutorch.setDevice(tonumber(arg[1]))
+        cutorch.setDevice(arg[1])
         config_list_dir = './Experiments/config/'
         done_dir = './Experiments/done/'
     elseif interactive == true then  
@@ -73,37 +73,40 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
     end 
     
     --data sources
-    nsmall = 10000
+    if small_exp == true then nsmall = 1000 else nsmall = 5000 end 
     ds_small = DataSource({dataset = train_data:narrow(1,1,nsmall), batchSize = bsz})
     ds_train = DataSource({dataset = train_data, batchSize = bsz})
     ds_test = DataSource({dataset = test_data, batchSize = bsz})
    
     --small experiment for debugging 
-    if small_exp==true then 
+    if small_exp == true then 
         ds_train = ds_small 
     end
 
     --load a pre-trained decoder (trained on CIFAR-training set, l1w =?, using FISTA) 
-    decoder = torch.load('./Results/Trained_Networks/FISTA_decoder.t7')
+    decoder = torch.load('./Results/Trained_Networks/FISTA_decoder_new.t7')
+    --****random init******
+    decoder:reset()
+    --*********************
     decoder:cuda()
 
     --find max eigen value 
-    L = 600 or 1.05*findMaxEigenValue(decoder)
+    L = 1.05*findMaxEigenValue(decoder)
     
     get_codes = function(config,decoder,ds_train,ds_test,ds_small) 
         local Ztrain,Ztest,loss_plot 
         if config.name == 'FISTA' then 
             print('FISTA interence...')
-            Ztrain = ConvFISTA(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
-            Ztest = ConvFISTA(decoder,ds_test.data[1],config.niter,config.l1w,config.L) 
+            Ztrain = iter_infer(decoder,ds_train.data[1],config.niter,config.l1w,config.L) 
+            Ztest = iter_infer(decoder,ds_test.data[1],config.niter,config.l1w,config.L) 
         elseif config.name == 'LISTA' then 
-            local inplane = decoder:get(2).weight:size(1)
-            local outplane = decoder:get(2).weight:size(2) 
-            local k = decoder:get(2).kW
-            local We = nn.SpatialConvolution(inplane,outplane,k,k) 
-            We.weight:copy(flip(decoder:get(2).weight)) 
-            We.bias:fill(0)
-            local encoder = construct_LISTA(We,config.nlayers,config.l1w,config.L,config.untied_weights)
+            local inplane = decoder.weight:size(1)
+            local outplane = decoder.weight:size(2) 
+            local k = decoder.kW
+            local We = flip(decoder.weight) 
+            local enc = nn.SpatialConvolution(inplane,outplane,k,k,1,1,(k-1)/2)
+            enc.weight:copy(We)
+            local encoder = construct_LISTA(enc,config.nlayers,config.l1w,config.L,config.untied_weights,config.recurrent)
             local learn_rate  
             if config.learn_rate == nil then 
                 learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
@@ -120,7 +123,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
             Ztest = transform_data(ds_test.data[1],encoder)
         elseif config.name == 'ReLU' then 
             local encoder = construct_deep_net(decoder,config.nlayers,config.untied_weights,config)
-            local learn_rate  
+            --local learn_rate  
             if config.learn_rate == nil then 
                 learn_rate = find_learn_rate(encoder,decoder,config.fix_decoder,ds_small,config.l1w)
                 local record_file = io.open(save_dir..'output.txt', 'a') 
@@ -156,6 +159,7 @@ while #ls_in_dir(config_list_dir, 'ls ') > 0 do
     config.untied_weights=arch.untied_weights
     config.nlayers=arch.nlayers 
     config.fix_decoder=arch.fix_decoder 
+    config.recurrent=arch.recurrent 
     config.name=arch.name
     config.niter=arch.niter
     config.save_dir = save_dir 

@@ -1,5 +1,5 @@
 --==misc==
-exp_name='compare_all/config12'
+exp_name='autoencoder_exp1/config12'
 small_exp=false
 --==dataset==
 dataset='CIFAR_CN'
@@ -13,7 +13,8 @@ repeat_exp=5
 arch={
  untied_weights = false,
  nlayers = 3,
- fix_decoder = true,
+ recurrent = false,
  name = "ReLU",
+ fix_decoder = false,
 }
 
